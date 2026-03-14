@@ -72,6 +72,11 @@ monitor:
     - "ghcr.io"
     - "github.com"
     - "api.github.com"
+    # Nous Research — portal + inference
+    # - "portal.nousresearch.com"
+    # - "inference-api.nousresearch.com"
+    # Email — SMTP outbound
+    # - "smtp.gmail.com"
     # Likely needed — enable per use case
     # - "firecrawl.dev"
     # - "api.browserbase.com"

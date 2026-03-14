@@ -31,7 +31,11 @@ def power_on(client: httpx.Client, server_id: int) -> Result[dict[str, Any]]:
 
 def take_backup(client: httpx.Client, server_id: int) -> Result[dict[str, Any]]:
     """POST take_backup (temporary) action to the server."""
-    return _post_action(client, server_id, {"type": "take_backup", "backup_type": "temporary"})
+    return _post_action(client, server_id, {
+        "type": "take_backup",
+        "backup_type": "temporary",
+        "replacement_strategy": "oldest",
+    })
 
 
 def rebuild(
