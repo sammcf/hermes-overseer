@@ -58,10 +58,11 @@ def rsync_pull(
             capture_output=True,
             text=True,
             timeout=timeout,
-            check=True,
         )
-        return Ok(result.stdout)
+        # Exit code 23 = some files couldn't be transferred (e.g. missing on remote).
+        # This is expected when monitored files don't exist yet.
+        if result.returncode == 0 or result.returncode == 23:
+            return Ok(result.stdout)
+        return Err(result.stderr or f"rsync failed with exit code {result.returncode}")
     except subprocess.TimeoutExpired:
         return Err(f"rsync timed out after {timeout}s")
-    except subprocess.CalledProcessError as exc:
-        return Err(exc.stderr or f"rsync failed with exit code {exc.returncode}")

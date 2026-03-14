@@ -45,13 +45,29 @@ monitor:
 
   connection_allowlist:
     # Core — always needed
+    - "openrouter.ai"
     - "api.openrouter.ai"
     - "api.anthropic.com"
     - "api.openai.com"
     - "generativelanguage.googleapis.com"
     - "api.telegram.org"
     - "imap.gmail.com"
+    # Tailscale — control plane + DERP relays
     - "login.tailscale.com"
+    - "controlplane.tailscale.com"
+    - "derp1.tailscale.com"
+    - "derp2.tailscale.com"
+    - "derp3.tailscale.com"
+    - "derp4.tailscale.com"
+    - "derp5.tailscale.com"
+    - "derp6.tailscale.com"
+    - "derp7.tailscale.com"
+    - "derp8.tailscale.com"
+    - "derp9.tailscale.com"
+    - "derp10.tailscale.com"
+    - "derp11.tailscale.com"
+    - "derp12.tailscale.com"
+    # Container registries + code hosting
     - "registry-1.docker.io"
     - "ghcr.io"
     - "github.com"

@@ -29,7 +29,9 @@ def pull_watched_files(
     remote_paths = [
         os.path.join(hermes_home, p.rstrip("/")) for p in all_paths
     ]
-    return rsync_pull(hostname, user, remote_paths, state_dir)
+    dest = os.path.join(state_dir, "current")
+    os.makedirs(dest, exist_ok=True)
+    return rsync_pull(hostname, user, remote_paths, dest)
 
 
 def diff_file(current_path: str, last_good_path: str) -> DiffResult:

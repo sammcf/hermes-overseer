@@ -16,6 +16,11 @@ class OverseerConfig(BaseModel, frozen=True):
     canary_stale_threshold_seconds: int = 3600
     data_dir: str = "/var/lib/hermes-overseer"
 
+    @model_validator(mode="after")
+    def expand_paths(self) -> OverseerConfig:
+        object.__setattr__(self, "data_dir", os.path.expanduser(self.data_dir))
+        return self
+
 
 class VpsConfig(BaseModel, frozen=True):
     server_id: int
@@ -80,6 +85,13 @@ class CostConfig(BaseModel, frozen=True):
         "toolsets",
         "mcp_servers",
     ]
+
+    @model_validator(mode="after")
+    def expand_paths(self) -> CostConfig:
+        object.__setattr__(
+            self, "canonical_hermes_config", os.path.expanduser(self.canonical_hermes_config)
+        )
+        return self
 
 
 class TierActionConfig(BaseModel, frozen=True):

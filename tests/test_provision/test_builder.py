@@ -32,6 +32,7 @@ MINIMAL_VARS: dict[str, str] = {
     "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI test@host",
     "tailscale_auth_key": "tskey-auth-abc123",
     "tailscale_hostname": "hermes-vps",
+    "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
 }
 
 

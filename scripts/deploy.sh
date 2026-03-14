@@ -1,50 +1,51 @@
 #!/usr/bin/env bash
-# Deploy hermes-overseer on Fedora immutable.
-# Creates user, dirs, installs from source, enables systemd service.
+# Deploy hermes-overseer via distrobox (Arch Linux).
+# Idempotent: safe to re-run. Use --teardown to remove.
 set -euo pipefail
 
-INSTALL_DIR="/opt/hermes-overseer"
-DATA_DIR="/var/lib/hermes-overseer"
-CONFIG_DIR="/etc/hermes-overseer"
-SERVICE_USER="overseer"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+CONTAINER_NAME="hermes-overseer"
+SERVICE_NAME="hermes-overseer.service"
 
-echo "=== Hermes Overseer Deployment ==="
-
-# Create service user (no login shell)
-if ! id "$SERVICE_USER" &>/dev/null; then
-    sudo useradd --system --shell /usr/sbin/nologin --home-dir "$DATA_DIR" "$SERVICE_USER"
-    echo "Created user: $SERVICE_USER"
+# ── Teardown mode ──────────────────────────────────────────────
+if [[ "${1:-}" == "--teardown" ]]; then
+    echo "=== Tearing down hermes-overseer ==="
+    systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
+    systemctl --user disable "$SERVICE_NAME" 2>/dev/null || true
+    distrobox rm --force "$CONTAINER_NAME" 2>/dev/null || true
+    echo "Done. Container and service removed."
+    echo "(Config and data dirs preserved — delete manually if needed)"
+    exit 0
 fi
 
-# Create directories
-sudo mkdir -p "$DATA_DIR"/{state,logs}
-sudo mkdir -p "$CONFIG_DIR"
-sudo mkdir -p "$INSTALL_DIR"
+# ── Create / replace distrobox ─────────────────────────────────
+echo "=== Creating distrobox container ==="
+distrobox assemble create --replace --file "$PROJECT_DIR/distrobox/overseer.ini"
 
-# Copy source
-sudo cp -r . "$INSTALL_DIR/"
+# ── Run setup inside container ─────────────────────────────────
+echo "=== Running setup inside container ==="
+distrobox enter "$CONTAINER_NAME" -- bash "$PROJECT_DIR/distrobox/setup.sh"
 
-# Create venv and install
-cd "$INSTALL_DIR"
-sudo -u "$SERVICE_USER" python3 -m venv "$DATA_DIR/.venv" 2>/dev/null || python3 -m venv "$DATA_DIR/.venv"
-sudo "$DATA_DIR/.venv/bin/pip" install -e "$INSTALL_DIR"
+# ── Install systemd user service on host ───────────────────────
+echo "=== Installing systemd user service ==="
+mkdir -p "$HOME/.config/systemd/user"
+cp "$PROJECT_DIR/systemd/hermes-overseer.service" "$HOME/.config/systemd/user/$SERVICE_NAME"
+systemctl --user daemon-reload
 
-# Copy example config if no config exists
-if [ ! -f "$CONFIG_DIR/overseer.yaml" ]; then
-    sudo cp "$INSTALL_DIR/config/overseer.example.yaml" "$CONFIG_DIR/overseer.yaml"
-    echo "Copied example config to $CONFIG_DIR/overseer.yaml — EDIT BEFORE STARTING"
+# Enable lingering so user services survive logout
+if ! loginctl show-user "$USER" --property=Linger 2>/dev/null | grep -q "yes"; then
+    echo "Enabling lingering for $USER..."
+    sudo loginctl enable-linger "$USER"
 fi
-
-# Install systemd service
-sudo cp "$INSTALL_DIR/systemd/hermes-overseer.service" /etc/systemd/system/
-sudo systemctl daemon-reload
-
-# Set ownership
-sudo chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 
 echo ""
 echo "=== Deployment complete ==="
 echo "Next steps:"
-echo "  1. Edit $CONFIG_DIR/overseer.yaml"
-echo "  2. Create $CONFIG_DIR/env with required secrets"
-echo "  3. sudo systemctl enable --now hermes-overseer"
+echo "  1. Edit ~/.config/hermes-overseer/overseer.yaml"
+echo "  2. Create ~/.config/hermes-overseer/env with secrets:"
+echo "       BL_API_TOKEN=..."
+echo "       OVERSEER_TG_BOT_TOKEN=..."
+echo "       OVERSEER_EMAIL_PASSWORD=..."
+echo "       TS_HERMES_AUTH_KEY=..."
+echo "  3. systemctl --user enable --now $SERVICE_NAME"

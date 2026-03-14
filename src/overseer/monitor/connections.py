@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import socket
 
 from overseer.ssh import run_ssh_command
 from overseer.types import AlertTier, ConnectionInfo, Err, Ok, Result, Signal
@@ -76,6 +77,35 @@ def parse_ss_output(raw: str) -> list[ConnectionInfo]:
     return connections
 
 
+def _is_tailscale_ip(ip: str) -> bool:
+    """Check if an IP is in the Tailscale CGNAT range (100.64.0.0/10)."""
+    try:
+        parts = ip.split(".")
+        if len(parts) != 4:
+            return False
+        first, second = int(parts[0]), int(parts[1])
+        return first == 100 and 64 <= second <= 127
+    except (ValueError, IndexError):
+        return False
+
+
+def _resolve_allowlist(hostnames: list[str]) -> set[str]:
+    """Resolve allowlist hostnames to a set of IPs (and keep raw entries too).
+
+    Entries that are already IPs pass through. DNS failures are silently skipped
+    (the hostname stays in the set for direct comparison).
+    """
+    resolved: set[str] = set(hostnames)
+    for hostname in hostnames:
+        try:
+            infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            for info in infos:
+                resolved.add(info[4][0])
+        except (socket.gaierror, OSError):
+            pass
+    return resolved
+
+
 def check_connections(
     hostname: str,
     user: str,
@@ -91,11 +121,13 @@ def check_connections(
         return result  # propagate error
 
     connections = parse_ss_output(result.value)
-    allowlist_set = set(allowlist)
+    allowlist_ips = _resolve_allowlist(allowlist)
 
     signals: list[Signal] = []
     for conn in connections:
-        if conn.remote_host not in allowlist_set:
+        if _is_tailscale_ip(conn.remote_host):
+            continue
+        if conn.remote_host not in allowlist_ips:
             signals.append(
                 Signal.now(
                     source="connections",

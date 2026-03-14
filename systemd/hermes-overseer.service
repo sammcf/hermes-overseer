@@ -1,33 +1,17 @@
 [Unit]
-Description=Hermes Overseer — VPS monitoring and response
-After=network-online.target tailscaled.service
+Description=Hermes Overseer — VPS monitoring and response (distrobox)
+After=network-online.target
 Wants=network-online.target
-Requires=tailscaled.service
 
 [Service]
 Type=simple
-User=overseer
-Group=overseer
-ExecStart=/var/lib/hermes-overseer/.venv/bin/python -m overseer --config /etc/hermes-overseer/overseer.yaml
-EnvironmentFile=/etc/hermes-overseer/env
+ExecStart=/usr/bin/distrobox enter hermes-overseer -- \
+    %h/.local/share/hermes-overseer/.venv/bin/python -m overseer \
+    --config %h/.config/hermes-overseer/overseer.yaml
+EnvironmentFile=%h/.config/hermes-overseer/env
 Restart=on-failure
 RestartSec=30
 WatchdogSec=600
 
-# Security hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-RestrictNamespaces=true
-RestrictSUIDSGID=true
-ReadWritePaths=/var/lib/hermes-overseer
-
-# Allow SSH to VPS (needs network access)
-PrivateNetwork=false
-
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

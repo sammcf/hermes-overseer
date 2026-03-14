@@ -1,8 +1,17 @@
 #cloud-config
+#
+# Provisions a hermes-agent VPS from scratch.
+# After cloud-init completes, the overseer pushes config + secrets via SSH
+# and triggers the gateway service.
+#
+# Template variables:
+#   ssh_user, ssh_public_key, tailscale_auth_key, tailscale_hostname, docker_image
+
 users:
   - name: ${ssh_user}
-    groups: docker
+    groups: docker, sudo
     shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
     ssh_authorized_keys:
       - ${ssh_public_key}
 
@@ -17,22 +26,30 @@ packages:
   - curl
   - git
   - jq
+  - python3-venv
+  - python3-pip
+  - ripgrep
+  - openssh-server
 
 runcmd:
-  # UFW: deny all inbound, allow Tailscale
+  # UFW: deny all inbound, temporary SSH for cloud-init
   - ufw default deny incoming
   - ufw default allow outgoing
-  - ufw allow in on tailscale0
+  - ufw allow 22/tcp
   - ufw --force enable
 
   # Tailscale install + join
   - curl -fsSL https://tailscale.com/install.sh | sh
   - tailscale up --auth-key=${tailscale_auth_key} --hostname=${tailscale_hostname}
 
-  # Docker daemon config (resource limits)
+  # Lock down: remove public SSH, allow Tailscale only
+  - ufw allow in on tailscale0
+  - ufw delete allow 22/tcp
+
+  # Docker daemon config
   - mkdir -p /etc/docker
   - |
-    cat > /etc/docker/daemon.json <<'DOCKER_EOF'
+    cat > /etc/docker/daemon.json <<'EOF'
     {
       "default-ulimits": {
         "nofile": { "Name": "nofile", "Hard": 65536, "Soft": 65536 }
@@ -40,16 +57,45 @@ runcmd:
       "log-driver": "json-file",
       "log-opts": { "max-size": "10m", "max-file": "3" }
     }
-    DOCKER_EOF
+    EOF
   - systemctl restart docker
+  - docker pull ${docker_image}
 
-  # Hermes user setup
+  # Hermes agent install + all deps (including optional telegram gateway)
   - mkdir -p /home/${ssh_user}/.hermes
   - chown -R ${ssh_user}:${ssh_user} /home/${ssh_user}/.hermes
+  - |
+    sudo -u ${ssh_user} bash <<'INSTALL'
+    cd ~/.hermes
+    git clone https://github.com/NousResearch/hermes-agent.git
+    cd hermes-agent
+    python3 -m venv venv
+    venv/bin/pip install -e .
+    venv/bin/pip install 'python-telegram-bot[all]'
+    INSTALL
 
-  # Canary watcher setup
-  - cp /opt/hermes-overseer/canary-watcher.sh /usr/local/bin/canary-watcher.sh
-  - chmod +x /usr/local/bin/canary-watcher.sh
+  # Prepare systemd user service (config + secrets pushed by overseer post-rebuild)
+  - loginctl enable-linger ${ssh_user}
+  - |
+    sudo -u ${ssh_user} mkdir -p ~/.config/systemd/user
+    cat > /home/${ssh_user}/.config/systemd/user/hermes-gateway.service <<'SVC'
+    [Unit]
+    Description=Hermes Agent Telegram Gateway
+    After=network-online.target docker.service
+    Wants=network-online.target
+
+    [Service]
+    Type=simple
+    WorkingDirectory=%h/.hermes/hermes-agent
+    ExecStart=%h/.hermes/hermes-agent/venv/bin/hermes gateway run
+    Restart=on-failure
+    RestartSec=10
+    EnvironmentFile=%h/.hermes/.env
+
+    [Install]
+    WantedBy=default.target
+    SVC
+    chown -R ${ssh_user}:${ssh_user} /home/${ssh_user}/.config
 
   # Unattended upgrades
   - dpkg-reconfigure -plow unattended-upgrades
