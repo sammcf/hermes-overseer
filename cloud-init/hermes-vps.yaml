@@ -1,0 +1,55 @@
+#cloud-config
+users:
+  - name: ${ssh_user}
+    groups: docker
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - ufw
+  - unattended-upgrades
+  - curl
+  - git
+  - jq
+
+runcmd:
+  # UFW: deny all inbound, allow Tailscale
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow in on tailscale0
+  - ufw --force enable
+
+  # Tailscale install + join
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - tailscale up --auth-key=${tailscale_auth_key} --hostname=${tailscale_hostname}
+
+  # Docker daemon config (resource limits)
+  - mkdir -p /etc/docker
+  - |
+    cat > /etc/docker/daemon.json <<'DOCKER_EOF'
+    {
+      "default-ulimits": {
+        "nofile": { "Name": "nofile", "Hard": 65536, "Soft": 65536 }
+      },
+      "log-driver": "json-file",
+      "log-opts": { "max-size": "10m", "max-file": "3" }
+    }
+    DOCKER_EOF
+  - systemctl restart docker
+
+  # Hermes user setup
+  - mkdir -p /home/${ssh_user}/.hermes
+  - chown -R ${ssh_user}:${ssh_user} /home/${ssh_user}/.hermes
+
+  # Canary watcher setup
+  - cp /opt/hermes-overseer/canary-watcher.sh /usr/local/bin/canary-watcher.sh
+  - chmod +x /usr/local/bin/canary-watcher.sh
+
+  # Unattended upgrades
+  - dpkg-reconfigure -plow unattended-upgrades

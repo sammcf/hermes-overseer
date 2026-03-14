@@ -1,0 +1,101 @@
+overseer:
+  poll_interval_seconds: 120
+  heartbeat_interval_seconds: 1800
+  canary_interval_seconds: 180
+  canary_stale_threshold_seconds: 3600
+  data_dir: "/var/lib/hermes-overseer"
+
+vps:
+  server_id: 123456
+  tailscale_hostname: "hermes-vps"
+  ssh_user: "hermes"
+  hermes_home: "/home/hermes/.hermes"
+  base_image_id: "ubuntu-24.04"
+  tailscale_auth_key_env: "TS_HERMES_AUTH_KEY"
+
+binarylane:
+  api_token_env: "BL_API_TOKEN"
+  base_url: "https://api.binarylane.com.au"
+  max_retries: 5
+
+alerts:
+  telegram:
+    bot_token_env: "OVERSEER_TG_BOT_TOKEN"
+    chat_id: "123456789"
+  email:
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    from_address: "overseer@example.com"
+    to_address: "operator@example.com"
+    password_env: "OVERSEER_EMAIL_PASSWORD"
+
+monitor:
+  watched_files:
+    orange_on_any_diff:
+      - ".env"
+      - "config.yaml"
+    orange_on_suspicious_diff:
+      - "SOUL.md"
+      - "memories/MEMORY.md"
+      - "memories/USER.md"
+    yellow_on_any_diff:
+      - "cron/jobs.json"
+    yellow_on_new_file:
+      - "skills/"
+
+  connection_allowlist:
+    # Core — always needed
+    - "api.openrouter.ai"
+    - "api.anthropic.com"
+    - "api.openai.com"
+    - "generativelanguage.googleapis.com"
+    - "api.telegram.org"
+    - "imap.gmail.com"
+    - "login.tailscale.com"
+    - "registry-1.docker.io"
+    - "ghcr.io"
+    - "github.com"
+    - "api.github.com"
+    # Likely needed — enable per use case
+    # - "firecrawl.dev"
+    # - "api.browserbase.com"
+    # - "fal.ai"
+    # - "elevenlabs.io"
+    # - "app.honcho.dev"
+    # - "discord.com"
+
+  sustained_unknown_threshold: 3
+
+cost:
+  providers:
+    openrouter:
+      type: "prepaid_wallet"
+      yellow_remaining_usd: 10.0
+      orange_remaining_usd: 5.0
+    anthropic:
+      type: "rolling_window"
+      yellow_percent: 50
+      orange_percent: 80
+    openai:
+      type: "rolling_window"
+      yellow_percent: 50
+      orange_percent: 80
+    gemini:
+      type: "rolling_window"
+      yellow_percent: 50
+      orange_percent: 80
+
+  canonical_hermes_config: "config/hermes-canonical.yaml"
+  dispatch_policy_fields:
+    - "model.default"
+    - "model.provider"
+    - "toolsets"
+    - "mcp_servers"
+
+response:
+  yellow:
+    actions: ["alert"]
+  orange:
+    actions: ["power_off", "alert", "take_backup"]
+  red:
+    actions: ["take_backup", "rebuild", "revoke_keys", "alert"]
