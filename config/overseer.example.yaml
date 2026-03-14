@@ -6,7 +6,7 @@ overseer:
   data_dir: "/var/lib/hermes-overseer"
 
 vps:
-  server_id: 123456
+  server_id: 592953
   tailscale_hostname: "hermes-vps"
   ssh_user: "hermes"
   hermes_home: "/home/hermes/.hermes"

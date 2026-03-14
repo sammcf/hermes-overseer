@@ -18,5 +18,10 @@ def example_config_path() -> Path:
 
 
 @pytest.fixture
-def example_config(example_config_path: Path) -> Config:
-    return load_config(example_config_path)
+def example_config(example_config_path: Path) -> Config:  # noqa: ARG001
+    """Load example config with required env var warnings suppressed."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return load_config(EXAMPLE_CONFIG)

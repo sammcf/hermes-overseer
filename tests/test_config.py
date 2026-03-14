@@ -13,7 +13,7 @@ from overseer.config import Config, load_config
 class TestLoadConfig:
     def test_loads_example_config(self, example_config_path: Path) -> None:
         cfg = load_config(example_config_path)
-        assert cfg.vps.server_id == 123456
+        assert cfg.vps.server_id == 592953
         assert cfg.vps.tailscale_hostname == "hermes-vps"
         assert cfg.overseer.poll_interval_seconds == 120
 
