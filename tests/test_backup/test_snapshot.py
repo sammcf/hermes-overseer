@@ -84,6 +84,65 @@ class TestTakeSnapshot:
         assert "image_cache" in tar_cmd
         assert "document_cache" in tar_cmd
 
+    def test_wal_checkpoint_runs_before_tar(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """sqlite3 WAL checkpoint is issued before the tar archive is created."""
+        import overseer.backup.snapshot as snap
+
+        cmd_order: list[str] = []
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            cmd_order.append(cmd)
+            return Ok("")
+
+        monkeypatch.setattr(snap, "run_ssh_command", mock_ssh)
+        monkeypatch.setattr(snap, "rsync_pull_file", lambda *a, **kw: Ok(str(tmp_path)))
+
+        snap.take_snapshot("hermes-vps", "hermes", "/home/hermes/.hermes", str(tmp_path))
+
+        checkpoint_idx = next(
+            (i for i, c in enumerate(cmd_order) if "wal_checkpoint" in c), None
+        )
+        tar_idx = next((i for i, c in enumerate(cmd_order) if "tar czf" in c), None)
+
+        assert checkpoint_idx is not None, (
+            "WAL checkpoint command not found in SSH calls. "
+            "Add sqlite3 PRAGMA wal_checkpoint(FULL) before the tar in take_snapshot()."
+        )
+        assert tar_idx is not None, "tar czf command not found"
+        assert checkpoint_idx < tar_idx, (
+            f"WAL checkpoint (idx={checkpoint_idx}) must run before tar (idx={tar_idx})"
+        )
+        # Verify it targets the right DB file
+        assert "state.db" in cmd_order[checkpoint_idx], (
+            "Checkpoint command should reference state.db"
+        )
+
+    def test_wal_checkpoint_failure_does_not_abort_snapshot(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A failed WAL checkpoint is best-effort: snapshot proceeds regardless."""
+        import overseer.backup.snapshot as snap
+
+        call_count = [0]
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            call_count[0] += 1
+            if "wal_checkpoint" in cmd:
+                return Err("sqlite3: not found", source="ssh")
+            return Ok("")
+
+        monkeypatch.setattr(snap, "run_ssh_command", mock_ssh)
+        monkeypatch.setattr(snap, "rsync_pull_file", lambda *a, **kw: Ok(str(tmp_path)))
+
+        result = snap.take_snapshot("hermes-vps", "hermes", "/home/hermes/.hermes", str(tmp_path))
+
+        # Snapshot should still succeed even if checkpoint failed
+        assert isinstance(result, Ok), (
+            "Snapshot should succeed even when WAL checkpoint fails (best-effort)"
+        )
+
     def test_ssh_failure_during_archive_creation_returns_err(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

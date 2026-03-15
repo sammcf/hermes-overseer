@@ -50,6 +50,16 @@ def take_snapshot(
     hermes_parent = str(hermes_path.parent)
     hermes_dir = hermes_path.name
 
+    # Best-effort WAL checkpoint before archiving to ensure state.db is fully current
+    # (WAL pages in state.db-wal won't be in the tarball without this step)
+    wal_result = run_ssh_command(
+        hostname, user,
+        f'sqlite3 {hermes_home}/state.db "PRAGMA wal_checkpoint(FULL)"',
+        timeout=30,
+    )
+    if isinstance(wal_result, Err):
+        logger.warning("WAL checkpoint failed (continuing): %s", wal_result.error)
+
     excludes = " ".join(f"--exclude='{hermes_dir}/{ex}'" for ex in _EXCLUDES)
     tar_cmd = f"tar czf {remote_archive} -C {hermes_parent} {excludes} {hermes_dir}/"
 
