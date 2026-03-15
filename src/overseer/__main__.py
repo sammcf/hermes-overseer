@@ -92,6 +92,8 @@ def _cmd_accept_baseline(cfg: Config) -> None:
 def run_main_loop(cfg: Config) -> None:
     """Main poll loop: monitor → evaluate → respond, with heartbeat/canary on separate intervals."""
     from overseer.binarylane.client import create_client
+    from overseer.bot.commands import CommandContext, execute_command, parse_update
+    from overseer.bot.poller import fetch_updates
     from overseer.heartbeat.canary import touch_canary
     from overseer.heartbeat.pulse import send_pulse
     from overseer.monitor.pipeline import run_poll_cycle, run_response_cycle
@@ -105,6 +107,7 @@ def run_main_loop(cfg: Config) -> None:
     last_heartbeat = 0.0
     last_canary = 0.0
     last_backup = 0.0
+    bot_update_offset: int = 0
 
     logger.info("Overseer main loop starting")
 
@@ -167,11 +170,42 @@ def run_main_loop(cfg: Config) -> None:
                 logger.warning("Heartbeat pulse failed: %s", pulse_result.error)
             last_heartbeat = now
 
-        # --- Sleep until next poll ---
+        # --- Sleep phase: poll for bot commands every 5s until next cycle ---
         elapsed = time.monotonic() - loop_start
-        sleep_time = max(0, cfg.overseer.poll_interval_seconds - elapsed)
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+        sleep_remaining = max(0.0, cfg.overseer.poll_interval_seconds - elapsed)
+
+        def _set_poll_state(new_state: PollState) -> None:
+            nonlocal poll_state
+            poll_state = new_state
+
+        bot_ctx = CommandContext(
+            cfg=cfg,
+            bl_client=bl_client,
+            poll_state=poll_state,
+            set_poll_state=_set_poll_state,
+        )
+        poll_deadline = time.monotonic() + sleep_remaining
+        while True:
+            updates_result = fetch_updates(tg_token, bot_update_offset)
+            if isinstance(updates_result, Ok):
+                for update in updates_result.value:
+                    update_id: int = update["update_id"]
+                    if update_id >= bot_update_offset:
+                        bot_update_offset = update_id + 1
+                    bot_ctx.poll_state = poll_state  # refresh after any /clear
+                    cmd = parse_update(update)
+                    if cmd is not None:
+                        try:
+                            execute_command(cmd, bot_ctx)
+                        except Exception:
+                            logger.exception("Unhandled error in bot command /%s", cmd.name)
+            elif isinstance(updates_result, Err):
+                logger.debug("Bot polling error (non-fatal): %s", updates_result.error)
+
+            time_left = poll_deadline - time.monotonic()
+            if time_left <= 0:
+                break
+            time.sleep(min(5.0, time_left))
 
 
 def main(argv: list[str] | None = None) -> None:

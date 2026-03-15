@@ -9,6 +9,9 @@ import httpx
 from overseer.config import TelegramConfig, resolve_secret
 from overseer.types import AlertTier, Err, Ok, Result, Signal
 
+# Telegram's sendMessage limit is 4096 chars. Longer messages get a 400 Bad Request.
+_MAX_MESSAGE_LEN = 4096
+
 _TIER_LABEL: dict[AlertTier, str] = {
     AlertTier.YELLOW: "&#x26A0;&#xFE0F; YELLOW",
     AlertTier.ORANGE: "&#x1F7E0; ORANGE",
@@ -34,6 +37,8 @@ def format_alert(signals: list[Signal], tier: AlertTier) -> str:
 
 def send_telegram(bot_token: str, chat_id: str, message: str) -> Result[dict]:  # type: ignore[type-arg]
     """POST a message to the Telegram Bot API. Returns Ok(response_json) or Err."""
+    if len(message) > _MAX_MESSAGE_LEN:
+        message = message[: _MAX_MESSAGE_LEN - 3] + "..."
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
     try:
