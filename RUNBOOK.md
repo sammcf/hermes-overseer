@@ -108,7 +108,7 @@ systemctl --user restart hermes-overseer
 After pulling new changes to the repo:
 
 ```bash
-# Re-run deploy (recreates container + reinstalls)
+# Re-run deploy (recreates container + reinstalls, syncs hermes-canonical.yaml)
 ./scripts/deploy.sh
 
 # Restart the service to pick up changes
@@ -118,6 +118,11 @@ systemctl --user restart hermes-overseer
 The venv uses `pip install -e` (editable install), so for pure Python changes
 you can just restart the service without redeploying. Redeploy if dependencies
 change.
+
+`deploy.sh` also syncs `config/hermes-canonical.yaml` →
+`~/.config/hermes-overseer/hermes-canonical.yaml`, which is what gets pushed
+to the VPS on rebuild. **Always run `deploy.sh` before triggering a rebuild**
+if you've changed the canonical hermes config.
 
 ---
 
@@ -178,19 +183,23 @@ distrobox enter hermes-overseer -- ssh hermes@hermes-vps "echo ok"
 ### Manual rebuild
 
 ```bash
+# Sync canonical config (if repo has changed since last deploy)
+./scripts/deploy.sh
+
 # Load secrets
 set -a && source ~/.config/hermes-overseer/env && set +a
 
 # Validate only (no rebuild)
 uv run python scripts/run_rebuild.py --dry-run
 
-# Full rebuild (~4 minutes to operational hermes-agent)
-uv run python scripts/run_rebuild.py
+# Full rebuild (~6 minutes to operational hermes-agent with state restore)
+uv run python scripts/run_rebuild.py --config ~/.config/hermes-overseer/overseer.yaml
 ```
 
 The rebuild pipeline: removes stale Tailscale devices → renders cloud-init →
 BinaryLane rebuild → waits for SSH via Tailscale → waits for cloud-init
-completion → pushes `.env` and `config.yaml` → starts hermes-gateway service.
+completion → restores latest state snapshot → pushes `.env`, `config.yaml`,
+and Google OAuth files → starts hermes-gateway service.
 
 ### Emergency: manual VPS shutdown
 

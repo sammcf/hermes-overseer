@@ -27,6 +27,11 @@ distrobox assemble create --replace --file "$PROJECT_DIR/distrobox/overseer.ini"
 echo "=== Running setup inside container ==="
 distrobox enter "$CONTAINER_NAME" -- bash "$PROJECT_DIR/distrobox/setup.sh"
 
+# ── Sync hermes canonical config to live config dir ────────────
+echo "=== Syncing hermes-canonical.yaml ==="
+mkdir -p "$HOME/.config/hermes-overseer"
+cp "$PROJECT_DIR/config/hermes-canonical.yaml" "$HOME/.config/hermes-overseer/hermes-canonical.yaml"
+
 # ── Install systemd user service on host ───────────────────────
 echo "=== Installing systemd user service ==="
 mkdir -p "$HOME/.config/systemd/user"
