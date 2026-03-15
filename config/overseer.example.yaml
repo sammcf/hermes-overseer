@@ -8,6 +8,7 @@ overseer:
   backup_retention_count: 24       # keep ~4 days
   backup_dir: "~/.local/share/hermes-overseer/backups"
   secrets_dir: "~/.config/hermes-overseer"
+  patches_dir: "~/.config/hermes-overseer/patches"
 
 vps:
   server_id: 592953

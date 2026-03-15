@@ -27,10 +27,15 @@ distrobox assemble create --replace --file "$PROJECT_DIR/distrobox/overseer.ini"
 echo "=== Running setup inside container ==="
 distrobox enter "$CONTAINER_NAME" -- bash "$PROJECT_DIR/distrobox/setup.sh"
 
-# ── Sync hermes canonical config to live config dir ────────────
-echo "=== Syncing hermes-canonical.yaml ==="
-mkdir -p "$HOME/.config/hermes-overseer"
+# ── Sync hermes canonical config and patches to live config dir ─
+echo "=== Syncing hermes-canonical.yaml and patches/ ==="
+mkdir -p "$HOME/.config/hermes-overseer/patches"
 cp "$PROJECT_DIR/config/hermes-canonical.yaml" "$HOME/.config/hermes-overseer/hermes-canonical.yaml"
+# Sync all .patch files (provisioner applies these to VPS hermes-agent on each rebuild)
+if ls "$PROJECT_DIR/patches/"*.patch &>/dev/null; then
+    cp "$PROJECT_DIR/patches/"*.patch "$HOME/.config/hermes-overseer/patches/"
+    echo "  Synced $(ls "$PROJECT_DIR/patches/"*.patch | wc -l) patch(es)"
+fi
 
 # ── Install systemd user service on host ───────────────────────
 echo "=== Installing systemd user service ==="

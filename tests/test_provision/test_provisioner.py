@@ -533,3 +533,173 @@ class TestProvisionWithStateRestore:
         assert isinstance(result, Ok)
         assert result.value.config_pushed is True
         assert result.value.env_pushed is True
+
+
+# ---------------------------------------------------------------------------
+# provision_after_rebuild — local patch application step (WU-002)
+# ---------------------------------------------------------------------------
+
+
+class TestProvisionWithPatches:
+    """Patch files in patches_dir are pushed and applied after state restore."""
+
+    def _make_config(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, patches_dir: str | None = None
+    ) -> Config:
+        pubkey = tmp_path / "id_ed25519.pub"
+        pubkey.write_text("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI test@host")
+        canonical = tmp_path / "hermes-canonical.yaml"
+        canonical.write_text("model:\n  default: test\n")
+
+        import warnings
+
+        data = {
+            "vps": {
+                "server_id": 1,
+                "tailscale_hostname": "test",
+                "ssh_public_key_path": str(pubkey),
+            },
+            "cost": {"canonical_hermes_config": str(canonical)},
+            "overseer": {"patches_dir": patches_dir or str(tmp_path / "patches")},
+            "alerts": {
+                "telegram": {"chat_id": "123"},
+                "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
+            },
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return Config.model_validate(data)
+
+    def _setup_happy_mocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TS_HERMES_AUTH_KEY", "tskey-test")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+        monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", "42")
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.render_cloud_init",
+            lambda vars, **kw: Ok(_FAKE_CLOUD_INIT),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.validate_cloud_init",
+            lambda r: Ok(r),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.rebuild",
+            lambda *a, **kw: Ok({"id": 1, "status": "in-progress", "type": "rebuild"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.poll_action",
+            lambda *a, **kw: Ok({"id": 1, "status": "completed"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.wait_for_ssh",
+            lambda *a, **kw: Ok("test"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.push_file_content",
+            lambda *a, **kw: Ok("/path"),
+        )
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "cloud-init" in cmd:
+                return Ok("cloud-init-done")
+            return Ok("active")
+
+        monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+
+    def test_patches_pushed_and_applied(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Patch files in patches_dir are pushed to VPS and git-applied."""
+        patches_dir = tmp_path / "patches"
+        patches_dir.mkdir()
+        (patches_dir / "001-write-through.patch").write_text("--- a/foo\n+++ b/foo\n")
+        (patches_dir / "002-other.patch").write_text("--- a/bar\n+++ b/bar\n")
+
+        config = self._make_config(monkeypatch, tmp_path, str(patches_dir))
+        self._setup_happy_mocks(monkeypatch)
+
+        pushed_contents: list[str] = []
+        applied_cmds: list[str] = []
+
+        def mock_push(host, user, content, path, mode="0600"):
+            if path.endswith(".patch"):
+                pushed_contents.append(path)
+            return Ok(path)
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "cloud-init" in cmd:
+                return Ok("cloud-init-done")
+            if "git apply" in cmd:
+                applied_cmds.append(cmd)
+            return Ok("active")
+
+        monkeypatch.setattr("overseer.provision.provisioner.push_file_content", mock_push)
+        monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        assert isinstance(result, Ok)
+        assert len(pushed_contents) == 2
+        assert len(applied_cmds) == 2
+        assert any("001-write-through.patch" in cmd for cmd in applied_cmds)
+        assert any("002-other.patch" in cmd for cmd in applied_cmds)
+
+    def test_no_patches_dir_step_skipped(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """When patches_dir does not exist, patch step is skipped silently."""
+        # patches_dir points to non-existent dir
+        config = self._make_config(monkeypatch, tmp_path, str(tmp_path / "no-patches-here"))
+        self._setup_happy_mocks(monkeypatch)
+
+        applied_cmds: list[str] = []
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "cloud-init" in cmd:
+                return Ok("cloud-init-done")
+            if "git apply" in cmd:
+                applied_cmds.append(cmd)
+            return Ok("active")
+
+        monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        assert isinstance(result, Ok)
+        assert len(applied_cmds) == 0
+
+    def test_patch_apply_failure_is_best_effort(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A failed git apply is non-fatal: pipeline continues and service starts."""
+        patches_dir = tmp_path / "patches"
+        patches_dir.mkdir()
+        (patches_dir / "bad.patch").write_text("--- garbage\n+++ garbage\n")
+
+        config = self._make_config(monkeypatch, tmp_path, str(patches_dir))
+        self._setup_happy_mocks(monkeypatch)
+
+        def mock_push(host, user, content, path, mode="0600"):
+            return Ok(path)
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "cloud-init" in cmd:
+                return Ok("cloud-init-done")
+            if "git apply" in cmd:
+                return Err("patch does not apply", source="ssh")
+            return Ok("active")
+
+        monkeypatch.setattr("overseer.provision.provisioner.push_file_content", mock_push)
+        monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        assert isinstance(result, Ok)
+        assert result.value.config_pushed is True
+        assert result.value.service_started is True

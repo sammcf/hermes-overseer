@@ -180,6 +180,48 @@ def provision_after_rebuild(
     else:
         logger.info("No snapshot found in %s — skipping state restore", config.overseer.backup_dir)
 
+    # --- Step 5d: Apply local hermes-agent patches (best-effort) ---
+    # Patches live in ~/.config/hermes-overseer/patches/*.patch and are applied
+    # via git apply in the hermes-agent working tree after each rebuild.
+    patches_dir = Path(config.overseer.patches_dir)
+    if patches_dir.exists():
+        for patch_file in sorted(patches_dir.glob("*.patch")):
+            logger.info("Applying hermes-agent patch: %s", patch_file.name)
+            try:
+                patch_content = patch_file.read_text()
+            except OSError as exc:
+                logger.warning("Failed to read patch %s: %s", patch_file.name, exc)
+                continue
+            remote_patch = f"/tmp/{patch_file.name}"
+            push_result = push_file_content(
+                config.vps.tailscale_hostname,
+                config.vps.ssh_user,
+                patch_content,
+                remote_patch,
+                mode="0644",
+            )
+            if isinstance(push_result, Err):
+                logger.warning(
+                    "Failed to push patch %s: %s", patch_file.name, push_result.error
+                )
+                continue
+            hermes_agent_dir = f"{config.vps.hermes_home}/hermes-agent"
+            apply_result = run_ssh_command(
+                config.vps.tailscale_hostname,
+                config.vps.ssh_user,
+                f"cd {hermes_agent_dir} && git apply --whitespace=nowarn {remote_patch}"
+                f" && rm -f {remote_patch}",
+                timeout=30,
+            )
+            if isinstance(apply_result, Err):
+                logger.warning(
+                    "Failed to apply patch %s: %s", patch_file.name, apply_result.error
+                )
+            else:
+                logger.info("Applied patch: %s", patch_file.name)
+    else:
+        logger.debug("No patches_dir at %s, skipping patch step", config.overseer.patches_dir)
+
     # --- Step 6: Build hermes .env ---
     env_content_result = build_hermes_env_content(config.hermes_secrets.env_mapping)
     if isinstance(env_content_result, Err):
