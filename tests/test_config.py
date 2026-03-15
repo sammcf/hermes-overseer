@@ -110,7 +110,7 @@ class TestCostConfig:
 class TestResponseConfig:
     def test_tier_actions(self, example_config: Config) -> None:
         assert example_config.response.yellow.actions == ["alert"]
-        assert "power_off" in example_config.response.orange.actions
+        assert example_config.response.orange.actions == ["alert"]
         assert "rebuild" in example_config.response.red.actions
 
 

@@ -26,3 +26,9 @@ env/
 
 /state/
 /logs/
+
+# Generated provisioning files (contain live secrets/hostnames)
+src/overseer/provision/hermes-vps.yaml
+
+# Stray file created by terminal escape sequence misparse (ANSI CSI "[A" = cursor up)
+CR[A
