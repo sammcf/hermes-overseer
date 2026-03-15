@@ -143,6 +143,52 @@ class TestTakeSnapshot:
             "Snapshot should succeed even when WAL checkpoint fails (best-effort)"
         )
 
+    def test_extra_paths_included_in_tar_command(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """extra_paths are appended to the tar command relative to hermes_parent."""
+        import overseer.backup.snapshot as snap
+
+        captured_cmds: list[str] = []
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            captured_cmds.append(cmd)
+            return Ok("")
+
+        monkeypatch.setattr(snap, "run_ssh_command", mock_ssh)
+        monkeypatch.setattr(snap, "rsync_pull_file", lambda *a, **kw: Ok(str(tmp_path)))
+
+        snap.take_snapshot(
+            "hermes-vps", "hermes", "/home/hermes/.hermes", str(tmp_path),
+            extra_paths=[".claude.json", ".claude"],
+        )
+
+        tar_cmd = next(c for c in captured_cmds if "tar czf" in c)
+        assert ".claude.json" in tar_cmd
+        assert ".claude" in tar_cmd
+        assert "--ignore-failed-read" in tar_cmd
+
+    def test_extra_paths_absent_no_ignore_flag_not_added(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """When extra_paths is empty/None, tar command still includes --ignore-failed-read."""
+        import overseer.backup.snapshot as snap
+
+        captured_cmds: list[str] = []
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            captured_cmds.append(cmd)
+            return Ok("")
+
+        monkeypatch.setattr(snap, "run_ssh_command", mock_ssh)
+        monkeypatch.setattr(snap, "rsync_pull_file", lambda *a, **kw: Ok(str(tmp_path)))
+
+        snap.take_snapshot("hermes-vps", "hermes", "/home/hermes/.hermes", str(tmp_path))
+
+        tar_cmd = next(c for c in captured_cmds if "tar czf" in c)
+        # No extra paths appended
+        assert ".claude" not in tar_cmd
+
     def test_ssh_failure_during_archive_creation_returns_err(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

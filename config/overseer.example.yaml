@@ -21,6 +21,9 @@ vps:
   tailscale_tailnet: "-"
   ssh_public_key_path: "~/.ssh/id_ed25519.pub"
   docker_image: "nikolaik/python-nodejs:python3.11-nodejs20"
+  snapshot_extra_paths:
+    - ".claude.json"   # Claude Code auth identity
+    - ".claude"        # Claude Code app data
 
 binarylane:
   api_token_env: "BL_API_TOKEN"
@@ -49,8 +52,16 @@ monitor:
       - "SOUL.md"
       - "memories/MEMORY.md"
       - "memories/USER.md"
+      - "personas/GESTALT.md"
+      - "personas/GUARDIAN.md"
+      - "personas/LIBRARIAN.md"
+      - "personas/ORGANISER.md"
+      - "personas/VOICE.md"
+      - "personas/WITNESS.md"
+      - "personas/taxonomy.json"
     yellow_on_any_diff:
       - "cron/jobs.json"
+      - "auth.json"    # Nous + Codex OAuth tokens (refresh expected but want visibility)
     yellow_on_new_file:
       - "skills/"
 

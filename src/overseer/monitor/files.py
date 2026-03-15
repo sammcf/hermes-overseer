@@ -4,11 +4,35 @@ from __future__ import annotations
 
 import difflib
 import os
+import shutil
 from pathlib import Path
 
 from overseer.config import WatchedFilesConfig
 from overseer.ssh import rsync_pull
-from overseer.types import AlertTier, DiffResult, Result, Signal
+from overseer.types import AlertTier, DiffResult, Err, Ok, Result, Signal
+
+
+def reset_file_baseline(state_dir: str) -> Result[str]:
+    """Copy current/ → last_good/, making the current VPS state the new baseline.
+
+    Call this after a successful provision (to prevent post-rebuild false-positive
+    alerts) or when the operator wants to accept intentional VPS state changes
+    (e.g. legitimate SOUL.md / memory edits) as the new known-good state.
+    """
+    current = Path(state_dir) / "current"
+    last_good = Path(state_dir) / "last_good"
+
+    if not current.exists():
+        return Err("No current/ directory to reset from", source="files")
+
+    try:
+        if last_good.exists():
+            shutil.rmtree(last_good)
+        shutil.copytree(current, last_good)
+    except OSError as exc:
+        return Err(f"Baseline reset failed: {exc}", source="files")
+
+    return Ok(str(last_good))
 
 
 def pull_watched_files(

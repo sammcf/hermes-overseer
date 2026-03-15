@@ -9,13 +9,14 @@ import yaml
 
 from overseer.types import AlertTier, Signal
 
+_MISSING = object()  # module-level sentinel — same instance on every call
+
 
 def _get_nested(data: dict[str, Any], dot_path: str) -> Any:
     """Retrieve a value from a nested dict using dot-notation (e.g. 'model.default').
 
-    Returns a sentinel object if any key in the path is missing.
+    Returns _MISSING sentinel if any key in the path is missing.
     """
-    _MISSING = object()
     parts = dot_path.split(".")
     node: Any = data
     for part in parts:

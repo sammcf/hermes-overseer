@@ -29,6 +29,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Load and validate config, then exit",
     )
     parser.add_argument(
+        "--accept-baseline",
+        action="store_true",
+        help=(
+            "Pull current VPS state and accept it as the new file monitor baseline, then exit. "
+            "Use this after intentional hermes changes (SOUL.md, memories) to silence alerts."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -53,6 +61,32 @@ def print_config_summary(cfg: Config, config_path: str) -> None:
           f"{len(cfg.monitor.watched_files.yellow_on_any_diff)} yellow")
     print(f"  Connection allow: {len(cfg.monitor.connection_allowlist)} hosts")
     print(f"  Cost providers:   {len(cfg.cost.providers)}")
+
+
+def _cmd_accept_baseline(cfg: Config) -> None:
+    """Pull current VPS state and reset the file monitor baseline."""
+    from overseer.monitor.files import pull_watched_files, reset_file_baseline
+    from overseer.types import Err
+
+    print(f"Pulling watched files from {cfg.vps.tailscale_hostname}...")
+    pull_result = pull_watched_files(
+        hostname=cfg.vps.tailscale_hostname,
+        user=cfg.vps.ssh_user,
+        hermes_home=cfg.vps.hermes_home,
+        watched_files=cfg.monitor.watched_files,
+        state_dir=cfg.overseer.data_dir,
+    )
+    if isinstance(pull_result, Err):
+        print(f"Pull failed: {pull_result.error}", file=sys.stderr)
+        sys.exit(1)
+
+    reset_result = reset_file_baseline(cfg.overseer.data_dir)
+    if isinstance(reset_result, Err):
+        print(f"Baseline reset failed: {reset_result.error}", file=sys.stderr)
+        sys.exit(1)
+
+    print("Baseline accepted: current VPS state is now the new last-known-good baseline.")
+    print(f"  Baseline stored at: {reset_result.value}")
 
 
 def run_main_loop(cfg: Config) -> None:
@@ -111,6 +145,7 @@ def run_main_loop(cfg: Config) -> None:
                 cfg.vps.ssh_user,
                 cfg.vps.hermes_home,
                 cfg.overseer.backup_dir,
+                extra_paths=cfg.vps.snapshot_extra_paths,
             )
             if isinstance(snap_result, Err):
                 logger.warning("Snapshot failed: %s", snap_result.error)
@@ -157,6 +192,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.validate_only:
         print("Config valid.")
+        return
+
+    if args.accept_baseline:
+        _cmd_accept_baseline(cfg)
         return
 
     run_main_loop(cfg)

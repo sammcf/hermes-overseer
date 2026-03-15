@@ -12,6 +12,7 @@ import httpx
 from overseer.backup.snapshot import find_latest_snapshot, restore_snapshot
 from overseer.binarylane.actions import poll_action, rebuild
 from overseer.config import Config, resolve_secret
+from overseer.monitor.files import pull_watched_files, reset_file_baseline
 from overseer.provision.builder import render_cloud_init, validate_cloud_init
 from overseer.ssh import push_file_content, run_ssh_command, wait_for_ssh
 from overseer.tailscale import remove_devices_by_hostname
@@ -311,6 +312,27 @@ def provision_after_rebuild(
         else:
             logger.warning("Service verification inconclusive: %s", verify_result)
             service_started = False
+
+    # --- Step 11: Reset file monitor baseline (best-effort) ---
+    # Pull the freshly-provisioned VPS state into current/ and copy to last_good/
+    # so the next poll cycle doesn't generate false-positive orange signals
+    # from SOUL.md / memories that legitimately changed (restored state or
+    # intentional hermes interactions).
+    pull_result = pull_watched_files(
+        hostname=config.vps.tailscale_hostname,
+        user=config.vps.ssh_user,
+        hermes_home=config.vps.hermes_home,
+        watched_files=config.monitor.watched_files,
+        state_dir=config.overseer.data_dir,
+    )
+    if isinstance(pull_result, Ok):
+        reset_result = reset_file_baseline(config.overseer.data_dir)
+        if isinstance(reset_result, Ok):
+            logger.info("File monitor baseline reset after rebuild")
+        else:
+            logger.warning("Baseline reset failed: %s", reset_result.error)
+    else:
+        logger.warning("Baseline pull failed after rebuild: %s", pull_result.error)
 
     return Ok(ProvisionResult(
         rebuild_action=rebuild_action,

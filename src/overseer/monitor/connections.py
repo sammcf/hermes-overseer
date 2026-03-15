@@ -106,26 +106,61 @@ def _resolve_allowlist(hostnames: list[str]) -> set[str]:
     return resolved
 
 
+def _resolve_allowlist_via_vps(hostname: str, user: str, hostnames: list[str]) -> set[str]:
+    """Resolve allowlist hostnames from the VPS, supplementing local resolution.
+
+    The VPS may connect to CDN/infra IPs that differ from what the overseer host
+    resolves for the same hostname. We SSH and run getent to get the VPS-side IPs,
+    then union with local results so both are checked.
+
+    Falls back silently to local-only resolution if the SSH call fails.
+    """
+    resolved = _resolve_allowlist(hostnames)
+    if not hostnames:
+        return resolved
+    quoted = " ".join(f"'{h}'" for h in hostnames)
+    cmd = f"for h in {quoted}; do getent hosts \"$h\" 2>/dev/null | awk '{{print $1}}'; done"
+    result = run_ssh_command(hostname, user, cmd)
+    if isinstance(result, Ok):
+        for token in result.value.split():
+            token = token.strip()
+            if token:
+                resolved.add(token)
+    return resolved
+
+
+# System processes that run as root — expected to have external connections
+# (e.g. tailscaled for DERP relays, sshd for incoming Tailscale tunnels).
+# These are skipped when evaluating unknown connections.
+_TRUSTED_SYSTEM_PROCESSES = frozenset({"tailscaled", "sshd"})
+
+
 def check_connections(
     hostname: str,
     user: str,
     allowlist: list[str],
 ) -> Result[list[Signal]]:
-    """SSH to the VPS, run `ss -tnpH`, and flag any connections to unknown hosts.
+    """SSH to the VPS, run `ss -tnpH` with sudo for full process visibility.
+
+    Uses `sudo -n` (passwordless) to see process names for root-owned sockets
+    (e.g. tailscaled DERP connections). Falls back to unprivileged ss if sudo
+    is unavailable.
 
     Returns Ok(list[Signal]) where each signal has tier=YELLOW for an unknown host.
     Returns Err if the SSH command itself fails.
     """
-    result = run_ssh_command(hostname, user, "ss -tnpH")
+    result = run_ssh_command(hostname, user, "sudo -n ss -tnpH 2>/dev/null || ss -tnpH")
     if isinstance(result, Err):
         return result  # propagate error
 
     connections = parse_ss_output(result.value)
-    allowlist_ips = _resolve_allowlist(allowlist)
+    allowlist_ips = _resolve_allowlist_via_vps(hostname, user, allowlist)
 
     signals: list[Signal] = []
     for conn in connections:
         if _is_tailscale_ip(conn.remote_host):
+            continue
+        if conn.process in _TRUSTED_SYSTEM_PROCESSES:
             continue
         if conn.remote_host not in allowlist_ips:
             signals.append(

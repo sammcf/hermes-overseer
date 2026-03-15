@@ -34,12 +34,17 @@ def take_snapshot(
     user: str,
     hermes_home: str,
     backup_dir: str,
+    extra_paths: list[str] | None = None,
 ) -> Result[str]:
     """SSH to VPS: create tar.gz of hermes state (excluding code). rsync it locally.
 
     Returns Ok(local_archive_path) on success.
     Excludes hermes-agent, sandboxes, bin, image_cache, document_cache.
     Best-effort remote cleanup after download.
+
+    extra_paths: paths relative to hermes_home's parent directory (e.g. ".claude.json")
+        to include alongside hermes_home/ in the archive. Uses --ignore-failed-read so
+        missing files (e.g. before first auth) do not abort the snapshot.
     """
     timestamp = _now().strftime("%Y%m%dT%H%M%SZ")
     archive_name = f"hermes-state-{timestamp}.tar.gz"
@@ -61,7 +66,13 @@ def take_snapshot(
         logger.warning("WAL checkpoint failed (continuing): %s", wal_result.error)
 
     excludes = " ".join(f"--exclude='{hermes_dir}/{ex}'" for ex in _EXCLUDES)
-    tar_cmd = f"tar czf {remote_archive} -C {hermes_parent} {excludes} {hermes_dir}/"
+    extras = (" " + " ".join(f"'{p}'" for p in extra_paths)) if extra_paths else ""
+    # --ignore-failed-read: skip extra_paths entries that don't exist yet (e.g. .claude.json
+    # before first `claude auth login`) without aborting the archive.
+    tar_cmd = (
+        f"tar czf {remote_archive} --ignore-failed-read"
+        f" -C {hermes_parent} {excludes} {hermes_dir}/{extras}"
+    )
 
     tar_result = run_ssh_command(hostname, user, tar_cmd, timeout=120)
     if isinstance(tar_result, Err):

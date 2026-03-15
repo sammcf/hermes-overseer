@@ -80,21 +80,29 @@ def test_render_extra_variables_are_ignored(template_file: Path) -> None:
     assert isinstance(result, Ok)
 
 
-def test_render_default_template_path_missing(monkeypatch, tmp_path: Path) -> None:
-    """Default template path is used when none is supplied; Err if not found."""
+def test_render_default_template_bundled(monkeypatch, tmp_path: Path) -> None:
+    """Default template is the bundled hermes-vps.yaml — available regardless of cwd."""
     monkeypatch.chdir(tmp_path)  # ensure cwd has no cloud-init dir
-    result = render_cloud_init(MINIMAL_VARS)
-    assert isinstance(result, Err)
-
-
-def test_render_default_template_path_found(monkeypatch, tmp_path: Path) -> None:
-    """render_cloud_init finds the template via the default path when cwd is correct."""
-    cloud_init_dir = tmp_path / "cloud-init"
-    cloud_init_dir.mkdir()
-    (cloud_init_dir / "hermes-vps.yaml").write_text(MINIMAL_TEMPLATE)
-    monkeypatch.chdir(tmp_path)
-    result = render_cloud_init(MINIMAL_VARS)
+    # The bundled template requires real variables; just check it returns Ok
+    # using a minimal variable set that covers the required placeholders.
+    from overseer.provision.builder import _BUNDLED_TEMPLATE
+    assert _BUNDLED_TEMPLATE.exists(), f"Bundled template missing: {_BUNDLED_TEMPLATE}"
+    # Rendering with the proper variables should succeed even from wrong cwd
+    real_vars = {
+        "ssh_user": "hermes",
+        "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI test@host",
+        "tailscale_auth_key": "tskey-auth-test",
+        "tailscale_hostname": "hermes-vps",
+        "docker_image": "ubuntu:24.04",
+    }
+    result = render_cloud_init(real_vars)
     assert isinstance(result, Ok)
+
+
+def test_render_explicit_template_path_missing(tmp_path: Path) -> None:
+    """An explicit path that does not exist returns Err."""
+    result = render_cloud_init(MINIMAL_VARS, template_path=str(tmp_path / "no-such.yaml"))
+    assert isinstance(result, Err)
 
 
 # ---------------------------------------------------------------------------

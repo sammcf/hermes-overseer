@@ -9,10 +9,14 @@ import yaml
 
 from overseer.types import Err, Ok, Result
 
+# Bundled template — co-located with this module so it's always available
+# regardless of the process cwd (e.g. when running inside a distrobox container).
+_BUNDLED_TEMPLATE = Path(__file__).parent / "hermes-vps.yaml"
+
 
 def render_cloud_init(
     variables: dict[str, str],
-    template_path: str = "cloud-init/hermes-vps.yaml",
+    template_path: str | None = None,
 ) -> Result[str]:
     """Read cloud-init template and substitute $variable placeholders.
 
@@ -21,20 +25,21 @@ def render_cloud_init(
 
     Args:
         variables: Mapping of template variable names to values.
-        template_path: Path to the cloud-init YAML template (relative to cwd
-            or absolute).
+        template_path: Path to cloud-init YAML template. Defaults to the
+            bundled hermes-vps.yaml co-located with this module.
 
     Returns:
         Ok(rendered_yaml_string) or Err(description).
     """
-    path = Path(template_path)
+    path = Path(template_path) if template_path is not None else _BUNDLED_TEMPLATE
     if not path.exists():
-        return Err(f"Template not found: {template_path}", source="provision")
+        label = template_path or str(_BUNDLED_TEMPLATE)
+        return Err(f"Template not found: {label}", source="provision")
 
     try:
         raw = path.read_text()
     except OSError as exc:
-        return Err(f"Failed to read template {template_path}: {exc}", source="provision")
+        return Err(f"Failed to read template {path}: {exc}", source="provision")
 
     try:
         template = string.Template(raw)

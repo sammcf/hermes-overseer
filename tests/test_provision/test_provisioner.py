@@ -169,6 +169,14 @@ class TestProvisionHappyPath:
         monkeypatch.setattr(
             "overseer.provision.provisioner.run_ssh_command", _mock_ssh,
         )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.pull_watched_files",
+            lambda **kw: Ok("pulled"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.reset_file_baseline",
+            lambda state_dir: Ok(state_dir),
+        )
 
         result = provision_after_rebuild(test_config, bl_client)
 
@@ -340,6 +348,14 @@ class TestProvisionFailures:
             "overseer.provision.provisioner.run_ssh_command",
             mock_ssh,
         )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.pull_watched_files",
+            lambda **kw: Ok("pulled"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.reset_file_baseline",
+            lambda state_dir: Ok(state_dir),
+        )
 
         bl_client = MagicMock(spec=httpx.Client)
         result = provision_after_rebuild(config, bl_client)
@@ -451,6 +467,14 @@ class TestProvisionWithStateRestore:
             return Ok("active")
 
         monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.pull_watched_files",
+            lambda **kw: Ok("pulled"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.reset_file_baseline",
+            lambda state_dir: Ok(state_dir),
+        )
 
     def test_snapshot_exists_restore_runs_before_config_push(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -608,6 +632,14 @@ class TestProvisionWithPatches:
             return Ok("active")
 
         monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.pull_watched_files",
+            lambda **kw: Ok("pulled"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.reset_file_baseline",
+            lambda state_dir: Ok(state_dir),
+        )
 
     def test_patches_pushed_and_applied(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -703,3 +735,154 @@ class TestProvisionWithPatches:
         assert isinstance(result, Ok)
         assert result.value.config_pushed is True
         assert result.value.service_started is True
+
+
+# ---------------------------------------------------------------------------
+# provision_after_rebuild — baseline reset step (rebuild loop prevention)
+# ---------------------------------------------------------------------------
+
+
+class TestProvisionBaselineReset:
+    """After a successful provision, file monitor baseline is reset to prevent rebuild loops."""
+
+    def _make_config(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> Config:
+        pubkey = tmp_path / "id_ed25519.pub"
+        pubkey.write_text("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI test@host")
+        canonical = tmp_path / "hermes-canonical.yaml"
+        canonical.write_text("model:\n  default: test\n")
+
+        import warnings
+
+        data = {
+            "vps": {
+                "server_id": 1,
+                "tailscale_hostname": "test",
+                "ssh_public_key_path": str(pubkey),
+            },
+            "cost": {"canonical_hermes_config": str(canonical)},
+            "alerts": {
+                "telegram": {"chat_id": "123"},
+                "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
+            },
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return Config.model_validate(data)
+
+    def test_baseline_reset_called_after_successful_provision(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Successful provision triggers pull_watched_files + reset_file_baseline."""
+        config = self._make_config(monkeypatch, tmp_path)
+        monkeypatch.setenv("TS_HERMES_AUTH_KEY", "tskey-test")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+        monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", "42")
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.render_cloud_init",
+            lambda vars, **kw: Ok(_FAKE_CLOUD_INIT),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.validate_cloud_init",
+            lambda r: Ok(r),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.rebuild",
+            lambda *a, **kw: Ok({"id": 1, "status": "in-progress", "type": "rebuild"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.poll_action",
+            lambda *a, **kw: Ok({"id": 1, "status": "completed"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.wait_for_ssh",
+            lambda *a, **kw: Ok("test"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.push_file_content",
+            lambda *a, **kw: Ok("/path"),
+        )
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "cloud-init" in cmd:
+                return Ok("cloud-init-done")
+            return Ok("active")
+
+        monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+
+        pull_calls: list[tuple] = []
+        reset_calls: list[tuple] = []
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.pull_watched_files",
+            lambda **kw: (pull_calls.append(kw), Ok("pulled"))[1],
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.reset_file_baseline",
+            lambda state_dir: (reset_calls.append(state_dir), Ok(state_dir))[1],
+        )
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        assert isinstance(result, Ok)
+        assert len(pull_calls) == 1
+        assert len(reset_calls) == 1
+
+    def test_baseline_pull_failure_is_best_effort(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """If pull_watched_files fails, provision still returns Ok."""
+        config = self._make_config(monkeypatch, tmp_path)
+        monkeypatch.setenv("TS_HERMES_AUTH_KEY", "tskey-test")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+        monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", "42")
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.render_cloud_init",
+            lambda vars, **kw: Ok(_FAKE_CLOUD_INIT),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.validate_cloud_init",
+            lambda r: Ok(r),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.rebuild",
+            lambda *a, **kw: Ok({"id": 1, "status": "in-progress", "type": "rebuild"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.poll_action",
+            lambda *a, **kw: Ok({"id": 1, "status": "completed"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.wait_for_ssh",
+            lambda *a, **kw: Ok("test"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.push_file_content",
+            lambda *a, **kw: Ok("/path"),
+        )
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "cloud-init" in cmd:
+                return Ok("cloud-init-done")
+            return Ok("active")
+
+        monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.pull_watched_files",
+            lambda **kw: Err("rsync failed", source="files"),
+        )
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        assert isinstance(result, Ok)
+        assert result.value.config_pushed is True
+        assert result.value.env_pushed is True

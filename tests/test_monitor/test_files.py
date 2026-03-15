@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from overseer.config import WatchedFilesConfig
-from overseer.monitor.files import diff_file, evaluate_file_changes
-from overseer.types import AlertTier
+from overseer.monitor.files import diff_file, evaluate_file_changes, reset_file_baseline
+from overseer.types import AlertTier, Err, Ok
 
 # ---------------------------------------------------------------------------
 # diff_file
@@ -192,6 +192,92 @@ def test_evaluate_yellow_on_new_file(tmp_path: Path) -> None:
     assert len(signals) == 1
     assert signals[0].tier == AlertTier.YELLOW
     assert "new_skill.py" in signals[0].message
+
+
+# ---------------------------------------------------------------------------
+# reset_file_baseline
+# ---------------------------------------------------------------------------
+
+
+def test_reset_baseline_copies_current_to_last_good(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    current = state_dir / "current" / "home" / "hermes"
+    current.mkdir(parents=True)
+    (current / "SOUL.md").write_text("intentional hermes content\n")
+    (current / "config.yaml").write_text("model: claude\n")
+
+    result = reset_file_baseline(str(state_dir))
+
+    assert isinstance(result, Ok)
+    last_good = state_dir / "last_good"
+    assert (last_good / "home" / "hermes" / "SOUL.md").read_text() == "intentional hermes content\n"
+    assert (last_good / "home" / "hermes" / "config.yaml").read_text() == "model: claude\n"
+
+
+def test_reset_baseline_replaces_existing_last_good(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    current = state_dir / "current" / "hermes"
+    current.mkdir(parents=True)
+    (current / "SOUL.md").write_text("new content\n")
+
+    last_good_dir = state_dir / "last_good" / "hermes"
+    last_good_dir.mkdir(parents=True)
+    (last_good_dir / "SOUL.md").write_text("old content\n")
+    (last_good_dir / "stale.txt").write_text("will be removed\n")
+
+    result = reset_file_baseline(str(state_dir))
+
+    assert isinstance(result, Ok)
+    assert (state_dir / "last_good" / "hermes" / "SOUL.md").read_text() == "new content\n"
+    # stale file from old last_good is gone
+    assert not (state_dir / "last_good" / "hermes" / "stale.txt").exists()
+
+
+def test_reset_baseline_no_current_returns_err(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    result = reset_file_baseline(str(state_dir))
+
+    assert isinstance(result, Err)
+    assert "current" in result.error
+
+
+def test_reset_baseline_then_evaluate_produces_no_signals(tmp_path: Path) -> None:
+    """After reset, evaluate_file_changes should produce no signals."""
+    hermes_home = "/home/hermes/.hermes"
+    watched = WatchedFilesConfig(
+        orange_on_any_diff=[".env"],
+        orange_on_suspicious_diff=["SOUL.md"],
+        yellow_on_any_diff=["cron/jobs.json"],
+        yellow_on_new_file=[],
+    )
+    state_dir = _make_state_dir(
+        tmp_path,
+        hermes_home,
+        current_files={
+            ".env": "KEY=value\n",
+            "SOUL.md": "intentional hermes edits\n",
+            "cron/jobs.json": '{"jobs": [1, 2, 3]}',
+        },
+        last_good_files={
+            ".env": "KEY=old\n",
+            "SOUL.md": "original\n",
+            "cron/jobs.json": "{}",
+        },
+    )
+
+    # Before reset: signals are produced
+    signals_before = evaluate_file_changes(hermes_home, watched, state_dir)
+    assert len(signals_before) > 0
+
+    # Reset baseline to current
+    reset_result = reset_file_baseline(state_dir)
+    assert isinstance(reset_result, Ok)
+
+    # After reset: no signals
+    signals_after = evaluate_file_changes(hermes_home, watched, state_dir)
+    assert signals_after == []
 
 
 def test_evaluate_no_new_files_in_dir(tmp_path: Path) -> None:

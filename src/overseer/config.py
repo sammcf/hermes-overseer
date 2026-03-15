@@ -41,6 +41,10 @@ class VpsConfig(BaseModel, frozen=True):
     tailscale_tailnet: str = "-"
     ssh_public_key_path: str = "~/.ssh/id_ed25519.pub"
     docker_image: str = "nikolaik/python-nodejs:python3.11-nodejs20"
+    # Paths relative to the hermes user home (parent of hermes_home) to include
+    # in snapshots alongside hermes_home/. Use --ignore-failed-read so missing
+    # files (e.g. .claude.json before first auth) don't abort the snapshot.
+    snapshot_extra_paths: list[str] = [".claude.json", ".claude"]
 
     @model_validator(mode="after")
     def expand_paths(self) -> VpsConfig:
