@@ -90,7 +90,8 @@ runcmd:
     venv/bin/pip install -e .
     venv/bin/pip install -e mini-swe-agent
     venv/bin/pip install 'python-telegram-bot[all]'
-    echo 'export PATH="$$HOME/.hermes/hermes-agent/venv/bin:$$PATH"' >> ~/.bashrc
+    echo 'export PATH="$$HOME/.hermes/hermes-agent/venv/bin:$$HOME/.local/bin:$$PATH"' >> ~/.bashrc
+    curl -fsSL https://claude.ai/install.sh | bash
     INSTALL
 
   # Prepare systemd user service (config + secrets pushed by overseer post-rebuild)
