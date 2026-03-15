@@ -92,6 +92,10 @@ runcmd:
     venv/bin/pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
     echo 'export PATH="$$HOME/.hermes/hermes-agent/venv/bin:$$HOME/.local/bin:$$PATH"' >> ~/.bashrc
     curl -fsSL https://claude.ai/install.sh | bash
+    # Node + qmd (brew shellenv was just set up by claude install.sh)
+    eval "$$(brew shellenv)" 2>/dev/null || true
+    brew install node
+    npm install -g @tobilu/qmd
     INSTALL
 
   # Prepare systemd user service (config + secrets pushed by overseer post-rebuild)

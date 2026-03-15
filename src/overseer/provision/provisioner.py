@@ -196,6 +196,43 @@ def provision_after_rebuild(
     else:
         logger.info("brew bundle install complete")
 
+    # --- Step 5d-node: Ensure node is installed via brew (idempotent) ---
+    node_result = run_ssh_command(
+        config.vps.tailscale_hostname,
+        config.vps.ssh_user,
+        f'eval "$({_BREW} shellenv)" 2>/dev/null && {_BREW} install node 2>&1 || true',
+        timeout=300,
+    )
+    if isinstance(node_result, Err):
+        logger.warning("brew install node failed (continuing): %s", node_result.error)
+    else:
+        logger.info("brew install node complete")
+
+    # --- Step 5d-qmd: Install qmd globally via npm (not tracked by Brewfile) ---
+    qmd_result = run_ssh_command(
+        config.vps.tailscale_hostname,
+        config.vps.ssh_user,
+        f'eval "$({_BREW} shellenv)" 2>/dev/null && npm install -g @tobilu/qmd 2>&1 || true',
+        timeout=300,
+    )
+    if isinstance(qmd_result, Err):
+        logger.warning("npm install -g @tobilu/qmd failed (continuing): %s", qmd_result.error)
+    else:
+        logger.info("npm install -g @tobilu/qmd complete")
+
+    # --- Step 5d-qmd-embed: Re-embed collections from restored snapshot state ---
+    # No-op if no collections defined; generous timeout for GGUF model downloads.
+    embed_result = run_ssh_command(
+        config.vps.tailscale_hostname,
+        config.vps.ssh_user,
+        f'eval "$({_BREW} shellenv)" 2>/dev/null && qmd embed 2>&1 || true',
+        timeout=600,
+    )
+    if isinstance(embed_result, Err):
+        logger.warning("qmd embed failed (continuing): %s", embed_result.error)
+    else:
+        logger.info("qmd embed complete")
+
     # --- Step 5d: Apply local hermes-agent patches (best-effort) ---
     # Patches live in ~/.config/hermes-overseer/patches/*.patch and are applied
     # via git apply in the hermes-agent working tree after each rebuild.
