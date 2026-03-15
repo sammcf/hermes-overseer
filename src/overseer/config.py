@@ -15,10 +15,16 @@ class OverseerConfig(BaseModel, frozen=True):
     canary_interval_seconds: int = 180
     canary_stale_threshold_seconds: int = 3600
     data_dir: str = "/var/lib/hermes-overseer"
+    backup_interval_seconds: int = 14400  # 4 hours
+    backup_retention_count: int = 24      # ~4 days at 4-hour intervals
+    backup_dir: str = "~/.local/share/hermes-overseer/backups"
+    secrets_dir: str = "~/.config/hermes-overseer"
 
     @model_validator(mode="after")
     def expand_paths(self) -> OverseerConfig:
         object.__setattr__(self, "data_dir", os.path.expanduser(self.data_dir))
+        object.__setattr__(self, "backup_dir", os.path.expanduser(self.backup_dir))
+        object.__setattr__(self, "secrets_dir", os.path.expanduser(self.secrets_dir))
         return self
 
 
@@ -118,13 +124,21 @@ class ResponseConfig(BaseModel, frozen=True):
 
 
 class HermesSecretsConfig(BaseModel, frozen=True):
-    """Maps hermes .env variable names → overseer env var names for secret resolution."""
+    """Maps hermes .env variable names → overseer env var names for secret resolution.
+
+    file_secrets maps hermes_home-relative filenames → overseer secrets_dir filenames.
+    These are pushed to the VPS on rebuild (e.g. Google OAuth token/credentials).
+    """
 
     env_mapping: dict[str, str] = {
         "OPENROUTER_API_KEY": "OPENROUTER_API_KEY",
         "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_ALLOWED_USERS": "TELEGRAM_ALLOWED_USERS",
         "FIRECRAWL_API_KEY": "FIRECRAWL_API_KEY",
+    }
+    file_secrets: dict[str, str] = {
+        "google_token.json": "google_token.json",
+        "google_client_secret.json": "google_client_secret.json",
     }
 
 

@@ -377,3 +377,159 @@ class TestProvisionFailures:
 
         assert isinstance(result, Err)
         assert "public key" in result.error.lower()
+
+
+# ---------------------------------------------------------------------------
+# provision_after_rebuild — state restore step (WU-001)
+# ---------------------------------------------------------------------------
+
+
+class TestProvisionWithStateRestore:
+    def _make_config(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, backup_dir: str | None = None
+    ) -> Config:
+        pubkey = tmp_path / "id_ed25519.pub"
+        pubkey.write_text("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI test@host")
+        canonical = tmp_path / "hermes-canonical.yaml"
+        canonical.write_text("model:\n  default: test\n")
+        actual_backup_dir = backup_dir or str(tmp_path / "backups")
+
+        import warnings
+
+        data = {
+            "vps": {
+                "server_id": 1,
+                "tailscale_hostname": "test",
+                "ssh_public_key_path": str(pubkey),
+            },
+            "cost": {"canonical_hermes_config": str(canonical)},
+            "overseer": {"backup_dir": actual_backup_dir},
+            "alerts": {
+                "telegram": {"chat_id": "123"},
+                "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
+            },
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return Config.model_validate(data)
+
+    def _setup_happy_mocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TS_HERMES_AUTH_KEY", "tskey-test")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+        monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", "42")
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "fc-test")
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.render_cloud_init",
+            lambda vars, **kw: Ok(_FAKE_CLOUD_INIT),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.validate_cloud_init",
+            lambda r: Ok(r),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.rebuild",
+            lambda *a, **kw: Ok({"id": 1, "status": "in-progress", "type": "rebuild"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.poll_action",
+            lambda *a, **kw: Ok({"id": 1, "status": "completed"}),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.wait_for_ssh",
+            lambda *a, **kw: Ok("test"),
+        )
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.push_file_content",
+            lambda *a, **kw: Ok("/path"),
+        )
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "cloud-init" in cmd:
+                return Ok("cloud-init-done")
+            return Ok("active")
+
+        monkeypatch.setattr("overseer.provision.provisioner.run_ssh_command", mock_ssh)
+
+    def test_snapshot_exists_restore_runs_before_config_push(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """When a snapshot archive exists, restore_snapshot is called before config is pushed."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        archive = backup_dir / "hermes-state-20260315T120000Z.tar.gz"
+        archive.write_bytes(b"archive")
+
+        config = self._make_config(monkeypatch, tmp_path, str(backup_dir))
+        self._setup_happy_mocks(monkeypatch)
+
+        restore_calls: list[str] = []
+
+        def mock_restore(host, user, archive_path, hermes_home):
+            restore_calls.append(archive_path)
+            return Ok("restored")
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.restore_snapshot",
+            mock_restore,
+        )
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        assert isinstance(result, Ok)
+        assert len(restore_calls) == 1
+        assert "20260315T120000Z" in restore_calls[0]
+
+    def test_no_snapshot_restore_skipped_pipeline_completes(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """When no snapshot exists, restore is skipped and pipeline completes normally."""
+        backup_dir = tmp_path / "backups"
+        # Don't create any archives
+
+        config = self._make_config(monkeypatch, tmp_path, str(backup_dir))
+        self._setup_happy_mocks(monkeypatch)
+
+        restore_calls: list[str] = []
+
+        def mock_restore(host, user, archive_path, hermes_home):
+            restore_calls.append(archive_path)
+            return Ok("restored")
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.restore_snapshot",
+            mock_restore,
+        )
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        assert isinstance(result, Ok)
+        assert len(restore_calls) == 0
+
+    def test_restore_failure_is_best_effort_pipeline_continues(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Restore failure is non-fatal: pipeline continues and service starts."""
+        backup_dir = tmp_path / "backups"
+        backup_dir.mkdir()
+        archive = backup_dir / "hermes-state-20260315T120000Z.tar.gz"
+        archive.write_bytes(b"archive")
+
+        config = self._make_config(monkeypatch, tmp_path, str(backup_dir))
+        self._setup_happy_mocks(monkeypatch)
+
+        monkeypatch.setattr(
+            "overseer.provision.provisioner.restore_snapshot",
+            lambda *a, **kw: Err("rsync: connection reset", source="ssh"),
+        )
+
+        bl_client = MagicMock(spec=httpx.Client)
+        result = provision_after_rebuild(config, bl_client)
+
+        # Pipeline must continue despite restore failure
+        assert isinstance(result, Ok)
+        assert result.value.config_pushed is True
+        assert result.value.env_pushed is True

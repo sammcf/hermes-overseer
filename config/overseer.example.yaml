@@ -4,6 +4,10 @@ overseer:
   canary_interval_seconds: 180
   canary_stale_threshold_seconds: 3600
   data_dir: "/var/lib/hermes-overseer"
+  backup_interval_seconds: 14400   # 4 hours
+  backup_retention_count: 24       # keep ~4 days
+  backup_dir: "~/.local/share/hermes-overseer/backups"
+  secrets_dir: "~/.config/hermes-overseer"
 
 vps:
   server_id: 592953
@@ -38,6 +42,8 @@ monitor:
     orange_on_any_diff:
       - ".env"
       - "config.yaml"
+      - "google_token.json"
+      - "google_client_secret.json"
     orange_on_suspicious_diff:
       - "SOUL.md"
       - "memories/MEMORY.md"
@@ -131,3 +137,6 @@ hermes_secrets:
     TELEGRAM_BOT_TOKEN: "TELEGRAM_BOT_TOKEN"
     TELEGRAM_ALLOWED_USERS: "TELEGRAM_ALLOWED_USERS"
     FIRECRAWL_API_KEY: "FIRECRAWL_API_KEY"
+  file_secrets:
+    google_token.json: "google_token.json"
+    google_client_secret.json: "google_client_secret.json"

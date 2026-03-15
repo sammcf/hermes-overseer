@@ -115,6 +115,60 @@ def push_file_content(
         return Err(f"push_file_content timed out after {timeout}s", source="ssh")
 
 
+def rsync_push(
+    hostname: str,
+    user: str,
+    local_path: str,
+    remote_dir: str,
+    timeout: int = 120,
+) -> Result[str]:
+    """Push a local file to a remote directory via rsync.
+
+    Returns Ok(remote_dir) or Err on failure/timeout.
+    """
+    cmd = ["rsync", "-az", local_path, f"{user}@{hostname}:{remote_dir}"]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode == 0:
+            return Ok(remote_dir)
+        return Err(result.stderr or f"rsync failed with exit code {result.returncode}")
+    except subprocess.TimeoutExpired:
+        return Err(f"rsync timed out after {timeout}s")
+
+
+def rsync_pull_file(
+    hostname: str,
+    user: str,
+    remote_path: str,
+    local_dir: str,
+    timeout: int = 120,
+) -> Result[str]:
+    """Pull a single file from a remote host into a local directory.
+
+    Unlike rsync_pull (which uses --relative for monitored file diffs), this
+    places the file flat in local_dir.
+    Returns Ok(local_dir) or Err on failure/timeout.
+    """
+    cmd = ["rsync", "-az", f"{user}@{hostname}:{remote_path}", local_dir]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode == 0:
+            return Ok(local_dir)
+        return Err(result.stderr or f"rsync failed with exit code {result.returncode}")
+    except subprocess.TimeoutExpired:
+        return Err(f"rsync timed out after {timeout}s")
+
+
 def wait_for_ssh(
     hostname: str,
     user: str,

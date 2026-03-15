@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from overseer.backup.snapshot import find_latest_snapshot, restore_snapshot
 from overseer.binarylane.actions import poll_action, rebuild
 from overseer.config import Config, resolve_secret
 from overseer.provision.builder import render_cloud_init, validate_cloud_init
@@ -162,6 +163,23 @@ def provision_after_rebuild(
     if isinstance(ci_result, Err):
         return ci_result
 
+    # --- Step 5c: Restore state from latest snapshot (best-effort) ---
+    latest_snapshot = find_latest_snapshot(config.overseer.backup_dir)
+    if latest_snapshot:
+        logger.info("Restoring state from snapshot: %s", latest_snapshot)
+        restore_result = restore_snapshot(
+            config.vps.tailscale_hostname,
+            config.vps.ssh_user,
+            latest_snapshot,
+            config.vps.hermes_home,
+        )
+        if isinstance(restore_result, Err):
+            logger.warning("State restore failed (continuing): %s", restore_result.error)
+        else:
+            logger.info("State restore complete: %s", restore_result.value)
+    else:
+        logger.info("No snapshot found in %s — skipping state restore", config.overseer.backup_dir)
+
     # --- Step 6: Build hermes .env ---
     env_content_result = build_hermes_env_content(config.hermes_secrets.env_mapping)
     if isinstance(env_content_result, Err):
@@ -203,6 +221,28 @@ def provision_after_rebuild(
     if isinstance(config_push, Err):
         return config_push
     config_pushed = True
+
+    # --- Step 8b: Push file-based secrets (Google OAuth etc.) — best-effort ---
+    secrets_dir = Path(config.overseer.secrets_dir)
+    for hermes_filename, overseer_filename in config.hermes_secrets.file_secrets.items():
+        local_path = secrets_dir / overseer_filename
+        if not local_path.exists():
+            logger.info(
+                "File secret %s not found in secrets_dir, skipping", overseer_filename
+            )
+            continue
+        remote_path = f"{config.vps.hermes_home}/{hermes_filename}"
+        file_push = push_file_content(
+            config.vps.tailscale_hostname,
+            config.vps.ssh_user,
+            local_path.read_text(),
+            remote_path,
+            mode="0600",
+        )
+        if isinstance(file_push, Err):
+            logger.warning("Failed to push file secret %s: %s", hermes_filename, file_push.error)
+        else:
+            logger.info("Pushed file secret: %s", hermes_filename)
 
     # --- Step 9: Start service (best-effort) ---
     start_cmd = (

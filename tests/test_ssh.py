@@ -1,4 +1,4 @@
-"""Tests for overseer.ssh: push_file_content and wait_for_ssh."""
+"""Tests for overseer.ssh: push_file_content, wait_for_ssh, rsync_push, rsync_pull_file."""
 
 from __future__ import annotations
 
@@ -162,3 +162,132 @@ class TestWaitForSsh:
         ssh.wait_for_ssh("host", "user", timeout=60)
 
         assert not sleep_called
+
+
+# ---------------------------------------------------------------------------
+# rsync_push
+# ---------------------------------------------------------------------------
+
+
+class TestRsyncPush:
+    def test_success_returns_ok(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        """Successful rsync push returns Ok(remote_dir)."""
+        from overseer import ssh
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        monkeypatch.setattr(ssh.subprocess, "run", MagicMock(return_value=mock_result))
+
+        result = ssh.rsync_push("host", "user", "/local/file.tar.gz", "/tmp/")
+
+        assert isinstance(result, Ok)
+        assert result.value == "/tmp/"
+
+    def test_failure_returns_err(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Non-zero exit code returns Err."""
+        from overseer import ssh
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "rsync: No route to host"
+        monkeypatch.setattr(ssh.subprocess, "run", MagicMock(return_value=mock_result))
+
+        result = ssh.rsync_push("host", "user", "/local/file.tar.gz", "/tmp/")
+
+        assert isinstance(result, Err)
+        assert "No route to host" in result.error
+
+    def test_timeout_returns_err(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Timeout returns Err."""
+        import subprocess as real_subprocess
+
+        from overseer import ssh
+
+        def mock_run(*args, **kwargs):
+            raise real_subprocess.TimeoutExpired(cmd=args[0], timeout=120)
+
+        monkeypatch.setattr(ssh.subprocess, "run", mock_run)
+
+        result = ssh.rsync_push("host", "user", "/local/file.tar.gz", "/tmp/")
+
+        assert isinstance(result, Err)
+        assert "timed out" in result.error
+
+    def test_command_targets_correct_destination(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify rsync command pushes local file to user@host:remote_dir."""
+        from overseer import ssh
+
+        captured: list[list[str]] = []
+
+        def mock_run(cmd, **kwargs):
+            captured.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        monkeypatch.setattr(ssh.subprocess, "run", mock_run)
+
+        ssh.rsync_push("myhost", "myuser", "/local/archive.tar.gz", "/tmp/")
+
+        assert len(captured) == 1
+        cmd = captured[0]
+        assert "/local/archive.tar.gz" in cmd
+        assert "myuser@myhost:/tmp/" in cmd
+
+
+# ---------------------------------------------------------------------------
+# rsync_pull_file
+# ---------------------------------------------------------------------------
+
+
+class TestRsyncPullFile:
+    def test_success_returns_ok(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Successful pull returns Ok(local_dir)."""
+        from overseer import ssh
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        monkeypatch.setattr(ssh.subprocess, "run", MagicMock(return_value=mock_result))
+
+        result = ssh.rsync_pull_file("host", "user", "/tmp/archive.tar.gz", "/local/dir/")
+
+        assert isinstance(result, Ok)
+        assert result.value == "/local/dir/"
+
+    def test_failure_returns_err(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Non-zero exit code returns Err."""
+        from overseer import ssh
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "rsync: connection reset"
+        monkeypatch.setattr(ssh.subprocess, "run", MagicMock(return_value=mock_result))
+
+        result = ssh.rsync_pull_file("host", "user", "/tmp/archive.tar.gz", "/local/dir/")
+
+        assert isinstance(result, Err)
+        assert "connection reset" in result.error
+
+    def test_command_does_not_use_relative_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """rsync_pull_file does NOT use --relative (unlike rsync_pull for monitoring)."""
+        from overseer import ssh
+
+        captured: list[list[str]] = []
+
+        def mock_run(cmd, **kwargs):
+            captured.append(cmd)
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        monkeypatch.setattr(ssh.subprocess, "run", mock_run)
+
+        ssh.rsync_pull_file("host", "user", "/tmp/hermes-state-xxx.tar.gz", "/backup/dir/")
+
+        assert len(captured) == 1
+        cmd = captured[0]
+        assert "--relative" not in cmd
+        assert "user@host:/tmp/hermes-state-xxx.tar.gz" in cmd
+        assert "/backup/dir/" in cmd

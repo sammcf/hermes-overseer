@@ -70,6 +70,7 @@ def run_main_loop(cfg: Config) -> None:
 
     last_heartbeat = 0.0
     last_canary = 0.0
+    last_backup = 0.0
 
     logger.info("Overseer main loop starting")
 
@@ -100,6 +101,27 @@ def run_main_loop(cfg: Config) -> None:
             if isinstance(result, Err):
                 logger.warning("Canary touch failed: %s", result.error)
             last_canary = now
+
+        # --- Periodic state snapshot ---
+        if now - last_backup >= cfg.overseer.backup_interval_seconds:
+            from overseer.backup.snapshot import prune_snapshots, take_snapshot
+
+            snap_result = take_snapshot(
+                cfg.vps.tailscale_hostname,
+                cfg.vps.ssh_user,
+                cfg.vps.hermes_home,
+                cfg.overseer.backup_dir,
+            )
+            if isinstance(snap_result, Err):
+                logger.warning("Snapshot failed: %s", snap_result.error)
+            else:
+                logger.info("Snapshot saved: %s", snap_result.value)
+                pruned = prune_snapshots(
+                    cfg.overseer.backup_dir, cfg.overseer.backup_retention_count
+                )
+                if pruned:
+                    logger.info("Pruned %d old snapshot(s)", pruned)
+            last_backup = now
 
         # --- Heartbeat (Telegram alive message) ---
         if now - last_heartbeat >= cfg.overseer.heartbeat_interval_seconds:

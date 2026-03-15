@@ -75,7 +75,6 @@ runcmd:
     }
     EOF
   - systemctl restart docker
-  - docker pull ${docker_image}
 
   # Hermes agent install + all deps (including optional telegram gateway)
   - mkdir -p /home/${ssh_user}/.hermes
@@ -90,6 +89,7 @@ runcmd:
     venv/bin/pip install -e .
     venv/bin/pip install -e mini-swe-agent
     venv/bin/pip install 'python-telegram-bot[all]'
+    venv/bin/pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
     echo 'export PATH="$$HOME/.hermes/hermes-agent/venv/bin:$$HOME/.local/bin:$$PATH"' >> ~/.bashrc
     curl -fsSL https://claude.ai/install.sh | bash
     INSTALL

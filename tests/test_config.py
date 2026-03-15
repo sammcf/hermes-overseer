@@ -181,3 +181,66 @@ class TestHermesSecretsConfig:
 
         with pytest.raises(ValidationError):
             example_config.hermes_secrets.env_mapping = {}  # type: ignore[misc]
+
+
+class TestFileSecretsConfig:
+    def test_default_file_secrets_include_google_oauth_files(
+        self, example_config: Config
+    ) -> None:
+        """Google OAuth files are included in default file_secrets mapping."""
+        fs = example_config.hermes_secrets.file_secrets
+        assert "google_token.json" in fs
+        assert "google_client_secret.json" in fs
+
+    def test_file_secrets_is_frozen(self, example_config: Config) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            example_config.hermes_secrets.file_secrets = {}  # type: ignore[misc]
+
+    def test_custom_file_secrets(self, tmp_path: Path) -> None:
+        """file_secrets can be overridden in config."""
+        import warnings
+
+        data = {
+            "vps": {"server_id": 1, "tailscale_hostname": "test"},
+            "alerts": {
+                "telegram": {"chat_id": "123"},
+                "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
+            },
+            "hermes_secrets": {
+                "file_secrets": {"custom.json": "custom.json"},
+            },
+        }
+        path = tmp_path / "cfg.yaml"
+        path.write_text(yaml.dump(data))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            cfg = load_config(path)
+        assert cfg.hermes_secrets.file_secrets == {"custom.json": "custom.json"}
+
+
+class TestBackupConfig:
+    def test_backup_interval_defaults_to_4_hours(self, example_config: Config) -> None:
+        """Default backup interval is 14400 seconds (4 hours)."""
+        assert example_config.overseer.backup_interval_seconds == 14400
+
+    def test_backup_retention_count_defaults_to_24(self, example_config: Config) -> None:
+        """Default retention of 24 keeps ~4 days at 4-hour intervals."""
+        assert example_config.overseer.backup_retention_count == 24
+
+    def test_backup_dir_default_is_expanded(self, example_config: Config) -> None:
+        """backup_dir tilde is expanded, default is under ~/.local/share."""
+        import os
+
+        assert "~" not in example_config.overseer.backup_dir
+        assert os.path.expanduser("~") in example_config.overseer.backup_dir
+        assert "hermes-overseer" in example_config.overseer.backup_dir
+
+    def test_secrets_dir_default_is_expanded(self, example_config: Config) -> None:
+        """secrets_dir tilde is expanded, default is under ~/.config."""
+        import os
+
+        assert "~" not in example_config.overseer.secrets_dir
+        assert os.path.expanduser("~") in example_config.overseer.secrets_dir
+        assert "hermes-overseer" in example_config.overseer.secrets_dir
