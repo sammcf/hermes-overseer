@@ -85,9 +85,12 @@ runcmd:
     cd ~/.hermes
     git clone https://github.com/NousResearch/hermes-agent.git
     cd hermes-agent
+    git submodule update --init mini-swe-agent
     python3 -m venv venv
     venv/bin/pip install -e .
+    venv/bin/pip install -e mini-swe-agent
     venv/bin/pip install 'python-telegram-bot[all]'
+    echo 'export PATH="$$HOME/.hermes/hermes-agent/venv/bin:$$PATH"' >> ~/.bashrc
     INSTALL
 
   # Prepare systemd user service (config + secrets pushed by overseer post-rebuild)
