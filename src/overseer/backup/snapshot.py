@@ -57,6 +57,7 @@ def take_snapshot(
 
     # Best-effort WAL checkpoint before archiving to ensure state.db is fully current
     # (WAL pages in state.db-wal won't be in the tarball without this step)
+    # TODO: add sqlite3 to cloud-init packages so this succeeds on fresh VPS
     wal_result = run_ssh_command(
         hostname, user,
         f'sqlite3 {hermes_home}/state.db "PRAGMA wal_checkpoint(FULL)"',

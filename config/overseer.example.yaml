@@ -138,10 +138,11 @@ cost:
 response:
   yellow:
     actions: ["alert"]
+  # TODO: add "rebuild" to orange once false positives are validated over several clean poll cycles
   orange:
-    actions: ["power_off", "alert", "take_backup"]
+    actions: ["alert"]
   red:
-    actions: ["take_backup", "rebuild", "revoke_keys", "alert"]
+    actions: ["alert", "rebuild"]
 
 hermes_secrets:
   env_mapping:
