@@ -38,9 +38,25 @@ runcmd:
   - ufw allow 22/tcp
   - ufw --force enable
 
-  # Tailscale install + join
-  - curl -fsSL https://tailscale.com/install.sh | sh
-  - tailscale up --auth-key=${tailscale_auth_key} --hostname=${tailscale_hostname}
+  # Tailscale: add repo, install, authenticate
+  # The tailscale deb postinst runs 'tailscale up' interactively which blocks.
+  # Workaround: install in background, wait for daemon, kill the blocker, then auth.
+  - |
+    mkdir -p --mode=0755 /usr/share/keyrings
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+      | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+    echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main" \
+      | tee /etc/apt/sources.list.d/tailscale.list
+    apt-get update -qq
+    apt-get install -y tailscale &
+    for i in $$(seq 1 120); do
+      pgrep -x tailscaled >/dev/null && break
+      sleep 1
+    done
+    sleep 2
+    pkill -f 'tailscale up' 2>/dev/null || true
+    wait || true
+    tailscale up --authkey=${tailscale_auth_key} --hostname=${tailscale_hostname}
 
   # Lock down: remove public SSH, allow Tailscale only
   - ufw allow in on tailscale0
@@ -76,8 +92,8 @@ runcmd:
 
   # Prepare systemd user service (config + secrets pushed by overseer post-rebuild)
   - loginctl enable-linger ${ssh_user}
+  - mkdir -p /home/${ssh_user}/.config/systemd/user
   - |
-    sudo -u ${ssh_user} mkdir -p ~/.config/systemd/user
     cat > /home/${ssh_user}/.config/systemd/user/hermes-gateway.service <<'SVC'
     [Unit]
     Description=Hermes Agent Telegram Gateway
@@ -95,7 +111,7 @@ runcmd:
     [Install]
     WantedBy=default.target
     SVC
-    chown -R ${ssh_user}:${ssh_user} /home/${ssh_user}/.config
+  - chown -R ${ssh_user}:${ssh_user} /home/${ssh_user}/.config
 
   # Unattended upgrades
-  - dpkg-reconfigure -plow unattended-upgrades
+  - DEBIAN_FRONTEND=noninteractive dpkg-reconfigure -plow unattended-upgrades

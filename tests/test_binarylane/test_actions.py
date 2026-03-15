@@ -120,7 +120,7 @@ def test_rebuild_success(http_client: httpx.Client) -> None:
     body = json.loads(route.calls.last.request.content)
     assert body["type"] == "rebuild"
     assert body["image"] == "ubuntu-24.04"
-    assert "user_data" not in body
+    assert "options" not in body
 
 
 @respx.mock
@@ -132,7 +132,7 @@ def test_rebuild_with_user_data(http_client: httpx.Client) -> None:
     assert isinstance(result, Ok)
     import json
     body = json.loads(route.calls.last.request.content)
-    assert body["user_data"] == "#!/bin/bash\necho hi"
+    assert body["options"]["user_data"] == "#!/bin/bash\necho hi"
 
 
 # ---------------------------------------------------------------------------

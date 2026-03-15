@@ -51,7 +51,12 @@ cat > ~/.config/hermes-overseer/env << 'EOF'
 BL_API_TOKEN=<binarylane api token>
 OVERSEER_TG_BOT_TOKEN=<overseer telegram bot token>
 OVERSEER_EMAIL_PASSWORD=<smtp password>
-TS_HERMES_AUTH_KEY=<tailscale pre-auth key for hermes, used during rebuild>
+TS_HERMES_AUTH_KEY=<tailscale pre-auth key for hermes — reusable, auto-approve, tag:hermes>
+TS_API_KEY=<tailscale api key — needed for pre-rebuild device cleanup>
+OPENROUTER_API_KEY=<openrouter api key — deployed to hermes .env>
+TELEGRAM_BOT_TOKEN=<hermes telegram bot token — deployed to hermes .env>
+TELEGRAM_ALLOWED_USERS=<comma-separated telegram user IDs for hermes>
+FIRECRAWL_API_KEY=<firecrawl api key — deployed to hermes .env>
 EOF
 chmod 600 ~/.config/hermes-overseer/env
 ```
@@ -169,6 +174,23 @@ tailscale status
 # Test SSH through distrobox
 distrobox enter hermes-overseer -- ssh hermes@hermes-vps "echo ok"
 ```
+
+### Manual rebuild
+
+```bash
+# Load secrets
+set -a && source ~/.config/hermes-overseer/env && set +a
+
+# Validate only (no rebuild)
+uv run python scripts/run_rebuild.py --dry-run
+
+# Full rebuild (~4 minutes to operational hermes-agent)
+uv run python scripts/run_rebuild.py
+```
+
+The rebuild pipeline: removes stale Tailscale devices → renders cloud-init →
+BinaryLane rebuild → waits for SSH via Tailscale → waits for cloud-init
+completion → pushes `.env` and `config.yaml` → starts hermes-gateway service.
 
 ### Emergency: manual VPS shutdown
 

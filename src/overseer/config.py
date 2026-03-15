@@ -29,6 +29,17 @@ class VpsConfig(BaseModel, frozen=True):
     hermes_home: str = "/home/hermes/.hermes"
     base_image_id: str = "ubuntu-24.04"
     tailscale_auth_key_env: str = "TS_HERMES_AUTH_KEY"
+    tailscale_api_key_env: str = "TS_API_KEY"
+    tailscale_tailnet: str = "-"
+    ssh_public_key_path: str = "~/.ssh/id_ed25519.pub"
+    docker_image: str = "nikolaik/python-nodejs:python3.11-nodejs20"
+
+    @model_validator(mode="after")
+    def expand_paths(self) -> VpsConfig:
+        object.__setattr__(
+            self, "ssh_public_key_path", os.path.expanduser(self.ssh_public_key_path)
+        )
+        return self
 
 
 class BinaryLaneConfig(BaseModel, frozen=True):
@@ -106,6 +117,17 @@ class ResponseConfig(BaseModel, frozen=True):
     )
 
 
+class HermesSecretsConfig(BaseModel, frozen=True):
+    """Maps hermes .env variable names → overseer env var names for secret resolution."""
+
+    env_mapping: dict[str, str] = {
+        "OPENROUTER_API_KEY": "OPENROUTER_API_KEY",
+        "TELEGRAM_BOT_TOKEN": "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_ALLOWED_USERS": "TELEGRAM_ALLOWED_USERS",
+        "FIRECRAWL_API_KEY": "FIRECRAWL_API_KEY",
+    }
+
+
 class Config(BaseModel, frozen=True):
     """Root configuration. All secrets are referenced by env var name, never stored directly."""
 
@@ -116,15 +138,18 @@ class Config(BaseModel, frozen=True):
     monitor: MonitorConfig = MonitorConfig()
     cost: CostConfig = CostConfig()
     response: ResponseConfig = ResponseConfig()
+    hermes_secrets: HermesSecretsConfig = HermesSecretsConfig()
 
     @model_validator(mode="after")
     def validate_env_vars_exist(self) -> Config:
         """Warn about missing env vars at config load time."""
         env_refs = [
             self.vps.tailscale_auth_key_env,
+            self.vps.tailscale_api_key_env,
             self.binarylane.api_token_env,
             self.alerts.telegram.bot_token_env,
             self.alerts.email.password_env,
+            *self.hermes_secrets.env_mapping.values(),
         ]
         missing = [ref for ref in env_refs if not os.environ.get(ref)]
         if missing:

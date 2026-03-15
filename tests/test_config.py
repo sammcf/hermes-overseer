@@ -112,3 +112,72 @@ class TestResponseConfig:
         assert example_config.response.yellow.actions == ["alert"]
         assert "power_off" in example_config.response.orange.actions
         assert "rebuild" in example_config.response.red.actions
+
+
+class TestVpsConfigNewFields:
+    def test_ssh_public_key_path_default(self, example_config: Config) -> None:
+        import os
+
+        expected = os.path.expanduser("~/.ssh/id_ed25519.pub")
+        assert example_config.vps.ssh_public_key_path == expected
+
+    def test_docker_image_default(self, example_config: Config) -> None:
+        assert example_config.vps.docker_image == "nikolaik/python-nodejs:python3.11-nodejs20"
+
+    def test_ssh_public_key_path_expanded(self, tmp_path: Path) -> None:
+        """Tilde in ssh_public_key_path is expanded."""
+        import os
+        import warnings
+
+        data = {
+            "vps": {
+                "server_id": 1,
+                "tailscale_hostname": "test",
+                "ssh_public_key_path": "~/custom/key.pub",
+            },
+            "alerts": {
+                "telegram": {"chat_id": "123"},
+                "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
+            },
+        }
+        path = tmp_path / "cfg.yaml"
+        path.write_text(yaml.dump(data))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            cfg = load_config(path)
+        assert cfg.vps.ssh_public_key_path == os.path.expanduser("~/custom/key.pub")
+        assert "~" not in cfg.vps.ssh_public_key_path
+
+
+class TestHermesSecretsConfig:
+    def test_default_mapping(self, example_config: Config) -> None:
+        mapping = example_config.hermes_secrets.env_mapping
+        assert "OPENROUTER_API_KEY" in mapping
+        assert "TELEGRAM_BOT_TOKEN" in mapping
+        assert "TELEGRAM_ALLOWED_USERS" in mapping
+
+    def test_custom_mapping(self, tmp_path: Path) -> None:
+        import warnings
+
+        data = {
+            "vps": {"server_id": 1, "tailscale_hostname": "test"},
+            "alerts": {
+                "telegram": {"chat_id": "123"},
+                "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
+            },
+            "hermes_secrets": {
+                "env_mapping": {"CUSTOM_KEY": "MY_ENV_VAR"},
+            },
+        }
+        path = tmp_path / "cfg.yaml"
+        path.write_text(yaml.dump(data))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            cfg = load_config(path)
+        assert cfg.hermes_secrets.env_mapping == {"CUSTOM_KEY": "MY_ENV_VAR"}
+
+    def test_hermes_secrets_is_frozen(self, example_config: Config) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            example_config.hermes_secrets.env_mapping = {}  # type: ignore[misc]

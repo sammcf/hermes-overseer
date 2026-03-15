@@ -12,6 +12,10 @@ vps:
   hermes_home: "/home/hermes/.hermes"
   base_image_id: "ubuntu-24.04"
   tailscale_auth_key_env: "TS_HERMES_AUTH_KEY"
+  tailscale_api_key_env: "TS_API_KEY"
+  tailscale_tailnet: "-"
+  ssh_public_key_path: "~/.ssh/id_ed25519.pub"
+  docker_image: "nikolaik/python-nodejs:python3.11-nodejs20"
 
 binarylane:
   api_token_env: "BL_API_TOKEN"
@@ -120,3 +124,10 @@ response:
     actions: ["power_off", "alert", "take_backup"]
   red:
     actions: ["take_backup", "rebuild", "revoke_keys", "alert"]
+
+hermes_secrets:
+  env_mapping:
+    OPENROUTER_API_KEY: "OPENROUTER_API_KEY"
+    TELEGRAM_BOT_TOKEN: "TELEGRAM_BOT_TOKEN"
+    TELEGRAM_ALLOWED_USERS: "TELEGRAM_ALLOWED_USERS"
+    FIRECRAWL_API_KEY: "FIRECRAWL_API_KEY"

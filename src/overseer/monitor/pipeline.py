@@ -27,7 +27,8 @@ def _guard(source: str, fn: Any, *args: Any, **kwargs: Any) -> list[Signal]:
     Any unhandled exception becomes a YELLOW signal rather than crashing the pipeline.
     """
     try:
-        return fn(*args, **kwargs)
+        result: list[Signal] = fn(*args, **kwargs)
+        return result
     except Exception as exc:
         logger.exception("Unhandled exception in monitor check %r", source)
         return [
@@ -185,4 +186,5 @@ def run_response_cycle(
         alerts_config=config.alerts,
         signals=signals,
         tier=tier,
+        config=config,
     )

@@ -105,9 +105,9 @@ def run_main_loop(cfg: Config) -> None:
         if now - last_heartbeat >= cfg.overseer.heartbeat_interval_seconds:
             vps_status = "OK" if not signals else f"{len(signals)} signal(s)"
             summary = f"Last poll: {poll_state.last_poll_time or 'N/A'}. VPS: {vps_status}"
-            result = send_pulse(tg_token, tg_chat, summary)
-            if isinstance(result, Err):
-                logger.warning("Heartbeat pulse failed: %s", result.error)
+            pulse_result = send_pulse(tg_token, tg_chat, summary)
+            if isinstance(pulse_result, Err):
+                logger.warning("Heartbeat pulse failed: %s", pulse_result.error)
             last_heartbeat = now
 
         # --- Sleep until next poll ---

@@ -129,8 +129,12 @@ downtime. Cost of delayed response to real compromise = unbounded.
   `backup_type: "temporary"` (7-day retention).
 - **No webhooks** — must poll for everything.
 - **`rebuild` action** preserves server ID + IP. Accepts base image + options.
+  **IMPORTANT:** `user_data` must be nested under `options.user_data` in the
+  rebuild body, NOT as a top-level field — BL silently ignores top-level
+  `user_data` and reuses whatever was previously stored on the server.
 - **`power_off` action** is instant (hard power cut). Use for orange-tier.
-- **Cloud-init** supported via `user_data` param on server create.
+- **Cloud-init** supported via `user_data` on server create and via
+  `options.user_data` on rebuild.
 - **Threshold alerts** built-in: CPU, network in/out, data transfer, storage,
   memory. Queryable via `GET /v2/servers/threshold_alerts`.
 - **Metrics** at 5-minute granularity via `GET /v2/samplesets/{server_id}/latest`.
@@ -257,7 +261,8 @@ searches for and uses any credentials it can find.
 ## External Accounts / Services Needed
 
 - **BinaryLane** — VPS hosting + API token
-- **Tailscale** — Tailnet with ACLs. Pre-auth key for `tag:hermes`.
+- **Tailscale** — Tailnet with ACLs. Pre-auth key for `tag:hermes` (reusable,
+  auto-approve). API key for device cleanup during rebuild (`TS_API_KEY`).
 - **OpenRouter** — LLM provider. Set hard budget cap.
 - **Anthropic** — Claude API key. Set workspace spend limit.
 - **Telegram** — Bot token for hermes gateway + separate bot (or same bot) for

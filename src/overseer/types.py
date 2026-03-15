@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -103,3 +103,13 @@ class PollState:
 
     sustained_unknown_count: int = 0
     last_poll_time: datetime | None = None
+
+
+@dataclass(frozen=True)
+class ProvisionResult:
+    """Outcome of the post-rebuild provisioning pipeline."""
+
+    rebuild_action: dict[str, Any]
+    config_pushed: bool
+    env_pushed: bool
+    service_started: bool

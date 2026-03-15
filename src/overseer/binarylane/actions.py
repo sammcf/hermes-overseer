@@ -47,7 +47,7 @@ def rebuild(
     """POST rebuild action to the server."""
     body: dict[str, Any] = {"type": "rebuild", "image": image_id}
     if user_data is not None:
-        body["user_data"] = user_data
+        body["options"] = {"user_data": user_data}
     return _post_action(client, server_id, body)
 
 

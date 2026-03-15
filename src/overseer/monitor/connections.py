@@ -100,7 +100,7 @@ def _resolve_allowlist(hostnames: list[str]) -> set[str]:
         try:
             infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
             for info in infos:
-                resolved.add(info[4][0])
+                resolved.add(str(info[4][0]))
         except (socket.gaierror, OSError):
             pass
     return resolved

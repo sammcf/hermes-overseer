@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from overseer.config import ResponseConfig, TierActionConfig
+from overseer.config import Config, ResponseConfig, TierActionConfig, load_config
 from overseer.response.actions import execute_actions, get_action_sequence
 from overseer.types import AlertTier, Err, Ok, Signal
 
@@ -173,3 +174,72 @@ def test_execute_actions_empty_list():
         tier=Y,
     )
     assert results == []
+
+
+# ---------------------------------------------------------------------------
+# rebuild action: config=None vs config provided
+# ---------------------------------------------------------------------------
+
+EXAMPLE_CONFIG = Path(__file__).parent.parent.parent / "config" / "overseer.example.yaml"
+
+
+def _load_example_config() -> Config:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return load_config(EXAMPLE_CONFIG)
+
+
+def test_rebuild_without_config_calls_bare_rebuild():
+    """config=None preserves the original bare rebuild behaviour."""
+    called_with: list[str] = []
+
+    def fake_rebuild(client, server_id, image_id):
+        called_with.append(image_id)
+        return Ok({"id": 1, "status": "completed", "type": "rebuild"})
+
+    with patch("overseer.binarylane.actions.rebuild", fake_rebuild):
+        results = execute_actions(
+            ["rebuild"],
+            server_id=1,
+            bl_client=MagicMock(),
+            alerts_config=MagicMock(),
+            signals=[_sig(R)],
+            tier=R,
+            config=None,
+        )
+
+    assert len(results) == 1
+    assert isinstance(results[0], Ok)
+    assert called_with == ["ubuntu-24.04"]
+
+
+def test_rebuild_with_config_calls_provisioner():
+    """When config is provided, rebuild dispatches to provision_after_rebuild."""
+    provisioner_called = False
+
+    def fake_provision(config, bl_client):
+        nonlocal provisioner_called
+        provisioner_called = True
+        return Ok("provisioned")
+
+    config = _load_example_config()
+
+    with patch(
+        "overseer.provision.provisioner.provision_after_rebuild",
+        fake_provision,
+    ):
+        results = execute_actions(
+            ["rebuild"],
+            server_id=config.vps.server_id,
+            bl_client=MagicMock(),
+            alerts_config=MagicMock(),
+            signals=[_sig(R)],
+            tier=R,
+            config=config,
+        )
+
+    assert provisioner_called
+    assert len(results) == 1
+    assert isinstance(results[0], Ok)

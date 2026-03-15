@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from overseer.config import ResponseConfig
+from overseer.config import Config, ResponseConfig
 from overseer.types import AlertTier, Err, Ok, Result, Signal
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +28,7 @@ def execute_actions(
     alerts_config: Any,
     signals: list[Signal],
     tier: AlertTier,
+    config: Config | None = None,
 ) -> list[Result[Any]]:
     """Execute each action in sequence, collecting results.
 
@@ -38,7 +36,7 @@ def execute_actions(
     - "alert"       — dispatch a Telegram/email alert via overseer.alert
     - "power_off"   — BinaryLane power_off
     - "take_backup" — BinaryLane take_backup
-    - "rebuild"     — BinaryLane rebuild
+    - "rebuild"     — BinaryLane rebuild (or full provision pipeline if config provided)
     - "revoke_keys" — placeholder: logs a warning, returns Ok
 
     Continues executing even if earlier actions fail.
@@ -48,7 +46,9 @@ def execute_actions(
     results: list[Result[Any]] = []
 
     for action in actions:
-        result = _execute_one(action, server_id, bl_client, alerts_config, signals, tier)
+        result = _execute_one(
+            action, server_id, bl_client, alerts_config, signals, tier, config=config
+        )
         results.append(result)
 
     return results
@@ -65,6 +65,7 @@ def _execute_one(
     alerts_config: Any,
     signals: list[Signal],
     tier: AlertTier,
+    config: Config | None = None,
 ) -> Result[Any]:
     if action == "alert":
         return _action_alert(alerts_config, signals, tier)
@@ -73,7 +74,7 @@ def _execute_one(
     if action == "take_backup":
         return _action_take_backup(bl_client, server_id)
     if action == "rebuild":
-        return _action_rebuild(bl_client, server_id)
+        return _action_rebuild(bl_client, server_id, config=config)
     if action == "revoke_keys":
         return _action_revoke_keys()
     logger.warning("Unknown action %r — skipping", action)
@@ -82,9 +83,10 @@ def _execute_one(
 
 def _action_alert(alerts_config: Any, signals: list[Signal], tier: AlertTier) -> Result[Any]:
     try:
-        from overseer.alert import dispatch_alert  # type: ignore[attr-defined]
+        from overseer.alert import dispatch_alert
 
-        return dispatch_alert(alerts_config, signals, tier)
+        results = dispatch_alert(alerts_config, signals, tier)
+        return Ok(results)
     except ImportError as exc:
         return Err(f"alert dispatch unavailable: {exc}", source="actions")
 
@@ -107,7 +109,16 @@ def _action_take_backup(bl_client: Any, server_id: int) -> Result[Any]:
         return Err(f"binarylane unavailable: {exc}", source="actions")
 
 
-def _action_rebuild(bl_client: Any, server_id: int) -> Result[Any]:
+def _action_rebuild(
+    bl_client: Any, server_id: int, config: Config | None = None
+) -> Result[Any]:
+    if config is not None:
+        try:
+            from overseer.provision.provisioner import provision_after_rebuild
+
+            return provision_after_rebuild(config, bl_client)
+        except ImportError as exc:
+            return Err(f"provisioner unavailable: {exc}", source="actions")
     try:
         from overseer.binarylane.actions import rebuild
 

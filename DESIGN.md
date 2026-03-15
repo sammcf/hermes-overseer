@@ -130,8 +130,9 @@ The host runs a systemd user service that `distrobox enter`s the container.
 ```
 overseer/
 ├── config.py              # Pydantic v2 config schema (all frozen models)
-├── types.py               # AlertTier, Signal, Ok/Err, PollState
-├── ssh.py                 # SSH command exec + rsync via subprocess
+├── types.py               # AlertTier, Signal, Ok/Err, PollState, ProvisionResult
+├── ssh.py                 # SSH command exec, rsync, push_file_content, wait_for_ssh
+├── tailscale.py           # Tailscale API: remove stale devices before rebuild
 ├── __main__.py            # CLI + main poll loop
 ├── binarylane/
 │   ├── client.py          # httpx client, auth, exponential backoff + jitter
@@ -156,7 +157,8 @@ overseer/
 │   ├── canary.py          # SSH touch file on VPS
 │   └── pulse.py           # Telegram alive message
 └── provision/
-    └── builder.py         # Render cloud-init template for rebuilds
+    ├── builder.py         # Render + validate cloud-init template
+    └── provisioner.py     # Full rebuild pipeline: cloud-init → rebuild → push → start
 ```
 
 **Key principle:** modules communicate via frozen types. No module imports
@@ -181,20 +183,39 @@ After a rebuild, not everything can be blindly restored:
 | **Skip** | `.env` | Never restore — always provision fresh keys |
 | **Unknown** | everything else | Flag for manual review |
 
+## Rebuild Pipeline
+
+A RED-tier response (or manual `scripts/run_rebuild.py`) triggers a fully
+automated rebuild pipeline (~4 minutes to operational hermes-agent):
+
+1. **Tailscale cleanup** — removes stale devices via TS API (prevents hostname
+   collision with `-1` suffixes)
+2. **Cloud-init render** — `string.Template` substitution of SSH key, TS auth
+   key, hostname, docker image into `cloud-init/hermes-vps.yaml`
+3. **BinaryLane rebuild** — `POST /v2/servers/{id}/actions` with `type: rebuild`
+   and `options.user_data` containing the rendered cloud-init
+4. **Poll rebuild** — wait for BL action to complete (~30s)
+5. **Wait for Tailscale SSH** — poll SSH connectivity on the TS hostname (~90s
+   for cloud-init to reach Tailscale join)
+6. **Wait for cloud-init** — `cloud-init status --wait` blocks until all
+   packages, hermes install, docker pull, systemd setup complete (~120s)
+7. **Push secrets** — `.env` file with hermes API keys via SSH stdin pipe
+8. **Push config** — canonical `config.yaml` via SSH
+9. **Start service** — `systemctl --user enable --now hermes-gateway.service`
+10. **Verify** — `systemctl --user is-active` check
+
+Steps 1–8 are hard dependencies (fail → abort). Steps 9–10 are best-effort.
+
 ## Known Gaps
 
 - `monitor/cost.py`: `check_rolling_window_usage` is stubbed — needs
   per-provider API investigation for Anthropic/OpenAI/Gemini usage endpoints
 - `response/actions.py`: `revoke_keys` is a placeholder — needs integration
   with each provider's key management API
-- BL API token storage is plaintext in the env file — a future improvement
-  would use basic encryption or a secrets manager
-- Overseer needs its own dedicated Telegram bot (currently shares config
-  placeholder with hermes)
-- Tailscale ACLs (`tag:hermes`, `tag:overseer`) not yet configured
 
 ## Test Coverage
 
-221 tests. All monitors, evaluator, response actions, alert formatting,
-heartbeat, config loading, BL client retry/backoff are covered. External
-calls (httpx, subprocess) are mocked via `respx` and `monkeypatch`.
+246 tests. All monitors, evaluator, response actions, alert formatting,
+heartbeat, config loading, BL client retry/backoff, provisioner pipeline,
+SSH push/wait, and Tailscale cleanup are covered. External calls (httpx,
+subprocess) are mocked via `respx` and `monkeypatch`.
