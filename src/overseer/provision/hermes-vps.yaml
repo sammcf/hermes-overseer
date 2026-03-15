@@ -1,0 +1,132 @@
+#cloud-config
+#
+# Provisions a hermes-agent VPS from scratch.
+# After cloud-init completes, the overseer pushes config + secrets via SSH
+# and triggers the gateway service.
+#
+# Template variables:
+#   ssh_user, ssh_public_key, tailscale_auth_key, tailscale_hostname, docker_image
+
+users:
+  - name: ${ssh_user}
+    groups: docker, sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - ufw
+  - unattended-upgrades
+  - curl
+  - git
+  - jq
+  - python3-venv
+  - python3-pip
+  - ripgrep
+  - openssh-server
+  - sqlite3          # WAL checkpoint before snapshots
+  - build-essential  # required by Homebrew on Linux
+
+runcmd:
+  # UFW: deny all inbound, temporary SSH for cloud-init
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw --force enable
+
+  # Tailscale: add repo, install, authenticate
+  # The tailscale deb postinst runs 'tailscale up' interactively which blocks.
+  # Workaround: install in background, wait for daemon, kill the blocker, then auth.
+  - |
+    mkdir -p --mode=0755 /usr/share/keyrings
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
+      | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+    echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main" \
+      | tee /etc/apt/sources.list.d/tailscale.list
+    apt-get update -qq
+    apt-get install -y tailscale &
+    for i in $$(seq 1 120); do
+      pgrep -x tailscaled >/dev/null && break
+      sleep 1
+    done
+    sleep 2
+    pkill -f 'tailscale up' 2>/dev/null || true
+    wait || true
+    tailscale up --authkey=${tailscale_auth_key} --hostname=${tailscale_hostname}
+
+  # Lock down: remove public SSH, allow Tailscale only
+  - ufw allow in on tailscale0
+  - ufw delete allow 22/tcp
+
+  # Docker daemon config
+  - mkdir -p /etc/docker
+  - |
+    cat > /etc/docker/daemon.json <<'EOF'
+    {
+      "default-ulimits": {
+        "nofile": { "Name": "nofile", "Hard": 65536, "Soft": 65536 }
+      },
+      "log-driver": "json-file",
+      "log-opts": { "max-size": "10m", "max-file": "3" }
+    }
+    EOF
+  - systemctl restart docker
+
+  # Hermes agent install + all deps (including optional telegram gateway)
+  - mkdir -p /home/${ssh_user}/.hermes
+  - chown -R ${ssh_user}:${ssh_user} /home/${ssh_user}/.hermes
+  - |
+    sudo -u ${ssh_user} bash <<'INSTALL'
+    cd ~/.hermes
+    git clone https://github.com/NousResearch/hermes-agent.git
+    cd hermes-agent
+    git submodule update --init mini-swe-agent
+    python3 -m venv venv
+    venv/bin/pip install -e .
+    venv/bin/pip install -e mini-swe-agent
+    venv/bin/pip install 'python-telegram-bot[all]'
+    venv/bin/pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+    echo 'export PATH="$$HOME/.hermes/hermes-agent/venv/bin:$$HOME/.local/bin:$$PATH"' >> ~/.bashrc
+    curl -fsSL https://claude.ai/install.sh | bash
+    INSTALL
+
+  # Homebrew: install and add to PATH for the hermes user
+  # Packages are restored post-rebuild by the overseer (brew bundle install --global)
+  # using the ~/.Brewfile captured in the pre-rebuild snapshot.
+  - |
+    sudo -u ${ssh_user} bash <<'HOMEBREW'
+    NONINTERACTIVE=1 /bin/bash -c "$$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    echo 'eval "$$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.bashrc
+    HOMEBREW
+
+  # Prepare systemd user service (config + secrets pushed by overseer post-rebuild)
+  - loginctl enable-linger ${ssh_user}
+  - mkdir -p /home/${ssh_user}/.config/systemd/user
+  - |
+    cat > /home/${ssh_user}/.config/systemd/user/hermes-gateway.service <<'SVC'
+    [Unit]
+    Description=Hermes Agent Telegram Gateway
+    After=network-online.target docker.service
+    Wants=network-online.target
+
+    [Service]
+    Type=simple
+    WorkingDirectory=%h/.hermes/hermes-agent
+    ExecStart=%h/.hermes/hermes-agent/venv/bin/hermes gateway run
+    Restart=on-failure
+    RestartSec=10
+    EnvironmentFile=%h/.hermes/.env
+
+    [Install]
+    WantedBy=default.target
+    SVC
+  - chown -R ${ssh_user}:${ssh_user} /home/${ssh_user}/.config
+
+  # Unattended upgrades
+  - DEBIAN_FRONTEND=noninteractive dpkg-reconfigure -plow unattended-upgrades

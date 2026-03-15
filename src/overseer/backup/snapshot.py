@@ -12,6 +12,9 @@ from overseer.types import Err, Ok, Result
 
 logger = logging.getLogger(__name__)
 
+# Homebrew binary path on Linux (standard install location)
+_BREW = "/home/linuxbrew/.linuxbrew/bin/brew"
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -27,6 +30,22 @@ _EXCLUDES = [
     "image_cache",
     "document_cache",
 ]
+
+
+def dump_brewfile(hostname: str, user: str, timeout: int = 30) -> None:
+    """Best-effort: regenerate ~/.Brewfile on the remote host.
+
+    Runs `brew bundle dump --global --force` so the Brewfile reflects the
+    current package list before any state capture. Failures are logged at
+    DEBUG level — brew may not be installed on all hosts.
+    """
+    result = run_ssh_command(
+        hostname, user,
+        f"eval \"$({_BREW} shellenv)\" 2>/dev/null && {_BREW} bundle dump --global --force 2>/dev/null",
+        timeout=timeout,
+    )
+    if isinstance(result, Err):
+        logger.debug("Brewfile dump failed (continuing): %s", result.error)
 
 
 def take_snapshot(
@@ -55,9 +74,12 @@ def take_snapshot(
     hermes_parent = str(hermes_path.parent)
     hermes_dir = hermes_path.name
 
+    # Best-effort Brewfile regeneration before archiving so the snapshot
+    # captures the current package list for post-rebuild restore
+    dump_brewfile(hostname, user)
+
     # Best-effort WAL checkpoint before archiving to ensure state.db is fully current
     # (WAL pages in state.db-wal won't be in the tarball without this step)
-    # TODO: add sqlite3 to cloud-init packages so this succeeds on fresh VPS
     wal_result = run_ssh_command(
         hostname, user,
         f'sqlite3 {hermes_home}/state.db "PRAGMA wal_checkpoint(FULL)"',

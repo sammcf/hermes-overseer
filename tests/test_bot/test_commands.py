@@ -190,9 +190,12 @@ def test_handle_baseline_pull_failure(
     sent: list[str] = []
     monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
-    with patch(
-        "overseer.bot.commands.pull_watched_files",
-        return_value=Err("ssh failed", source="files"),
+    with (
+        patch("overseer.bot.commands.dump_brewfile"),
+        patch(
+            "overseer.bot.commands.pull_watched_files",
+            return_value=Err("ssh failed", source="files"),
+        ),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="baseline", update_id=1)
         execute_command(cmd, ctx)
@@ -206,12 +209,36 @@ def test_handle_baseline_success(
     monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with (
+        patch("overseer.bot.commands.dump_brewfile"),
         patch("overseer.bot.commands.pull_watched_files", return_value=Ok("pulled")),
         patch("overseer.bot.commands.reset_file_baseline", return_value=Ok("/path/last_good")),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="baseline", update_id=1)
         execute_command(cmd, ctx)
     assert any("accepted" in s.lower() for s in sent)
+
+
+def test_handle_baseline_dumps_brewfile_before_pull(
+    ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
+) -> None:
+    """dump_brewfile must be called before pull_watched_files on baseline."""
+    call_log: list[str] = []
+    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: None)
+    monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
+    with (
+        patch(
+            "overseer.bot.commands.dump_brewfile",
+            side_effect=lambda *a, **kw: call_log.append("brew"),
+        ),
+        patch(
+            "overseer.bot.commands.pull_watched_files",
+            side_effect=lambda **kw: call_log.append("pull") or Ok("pulled"),
+        ),
+        patch("overseer.bot.commands.reset_file_baseline", return_value=Ok("/path/last_good")),
+    ):
+        cmd = BotCommand(chat_id=_allowed_chat(example_config), name="baseline", update_id=1)
+        execute_command(cmd, ctx)
+    assert call_log.index("brew") < call_log.index("pull")
 
 
 # ---------------------------------------------------------------------------

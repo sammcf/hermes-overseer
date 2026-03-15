@@ -8,7 +8,7 @@ from typing import Callable
 
 import httpx
 
-from overseer.backup.snapshot import take_snapshot
+from overseer.backup.snapshot import dump_brewfile, take_snapshot
 from overseer.config import Config
 from overseer.monitor.files import pull_watched_files, reset_file_baseline
 from overseer.provision.provisioner import provision_after_rebuild
@@ -111,6 +111,8 @@ def _handle_status(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None
 def _handle_baseline(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
     _send(bot_token, cmd.chat_id, "Pulling VPS files and resetting baseline…")
     cfg = ctx.cfg
+    # Regenerate Brewfile before pulling so the snapshot always has a fresh package list
+    dump_brewfile(cfg.vps.tailscale_hostname, cfg.vps.ssh_user)
     pull = pull_watched_files(
         hostname=cfg.vps.tailscale_hostname,
         user=cfg.vps.ssh_user,

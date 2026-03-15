@@ -22,8 +22,14 @@ vps:
   ssh_public_key_path: "~/.ssh/id_ed25519.pub"
   docker_image: "nikolaik/python-nodejs:python3.11-nodejs20"
   snapshot_extra_paths:
-    - ".claude.json"   # Claude Code auth identity
-    - ".claude"        # Claude Code app data
+    - ".claude.json"      # Claude Code auth identity
+    - ".claude"           # Claude Code app data
+    - ".Brewfile"         # Homebrew package list (regenerated before each snapshot)
+    - ".bashrc"           # PATH shims, brew shellenv, user customisations
+    - ".bash_profile"     # login-shell companion to .bashrc
+    - ".profile"          # POSIX fallback
+    - ".gitconfig"        # git identity and aliases
+    - ".config/gh"        # GitHub CLI auth
 
 binarylane:
   api_token_env: "BL_API_TOKEN"

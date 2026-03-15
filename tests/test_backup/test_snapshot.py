@@ -1,6 +1,7 @@
 """Behavioural tests for overseer.backup.snapshot.
 
 System invariants:
+- dump_brewfile: best-effort SSH call, never raises
 - take_snapshot: creates timestamped archive on VPS, downloads to local backup_dir
 - restore_snapshot: uploads archive to VPS, extracts under hermes_home parent, fixes ownership
 - find_latest_snapshot: returns most recent archive path or None
@@ -14,6 +15,36 @@ from pathlib import Path
 import pytest
 
 from overseer.types import Err, Ok
+
+
+# ---------------------------------------------------------------------------
+# dump_brewfile
+# ---------------------------------------------------------------------------
+
+
+class TestDumpBrewfile:
+    def test_runs_brew_bundle_dump(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Calls brew bundle dump --global --force on the remote host."""
+        import overseer.backup.snapshot as snap
+
+        cmds: list[str] = []
+        monkeypatch.setattr(
+            snap, "run_ssh_command", lambda h, u, cmd, timeout=30: cmds.append(cmd) or Ok("")
+        )
+        snap.dump_brewfile("hermes-vps", "hermes")
+        assert any("bundle dump" in c for c in cmds)
+        assert any("--global" in c for c in cmds)
+
+    def test_failure_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SSH failure is silently ignored (best-effort)."""
+        import overseer.backup.snapshot as snap
+
+        monkeypatch.setattr(
+            snap, "run_ssh_command",
+            lambda *a, **kw: Err("brew: command not found", source="ssh"),
+        )
+        snap.dump_brewfile("hermes-vps", "hermes")  # must not raise
+
 
 # ---------------------------------------------------------------------------
 # take_snapshot
@@ -83,6 +114,54 @@ class TestTakeSnapshot:
         assert "bin" in tar_cmd
         assert "image_cache" in tar_cmd
         assert "document_cache" in tar_cmd
+
+    def test_brew_dump_runs_before_tar(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """brew bundle dump is issued before the tar archive is created."""
+        import overseer.backup.snapshot as snap
+
+        cmd_order: list[str] = []
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            cmd_order.append(cmd)
+            return Ok("")
+
+        monkeypatch.setattr(snap, "run_ssh_command", mock_ssh)
+        monkeypatch.setattr(snap, "rsync_pull_file", lambda *a, **kw: Ok(str(tmp_path)))
+
+        snap.take_snapshot("hermes-vps", "hermes", "/home/hermes/.hermes", str(tmp_path))
+
+        brew_idx = next(
+            (i for i, c in enumerate(cmd_order) if "bundle dump" in c), None
+        )
+        tar_idx = next((i for i, c in enumerate(cmd_order) if "tar czf" in c), None)
+
+        assert brew_idx is not None, "brew bundle dump command not found in SSH calls"
+        assert tar_idx is not None, "tar czf command not found"
+        assert brew_idx < tar_idx, (
+            f"brew dump (idx={brew_idx}) must run before tar (idx={tar_idx})"
+        )
+
+    def test_brew_dump_failure_does_not_abort_snapshot(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A failed brew dump is best-effort: snapshot proceeds regardless."""
+        import overseer.backup.snapshot as snap
+
+        def mock_ssh(host, user, cmd, timeout=30):
+            if "bundle dump" in cmd:
+                return Err("brew: not found", source="ssh")
+            return Ok("")
+
+        monkeypatch.setattr(snap, "run_ssh_command", mock_ssh)
+        monkeypatch.setattr(snap, "rsync_pull_file", lambda *a, **kw: Ok(str(tmp_path)))
+
+        result = snap.take_snapshot("hermes-vps", "hermes", "/home/hermes/.hermes", str(tmp_path))
+
+        assert isinstance(result, Ok), (
+            "Snapshot should succeed even when brew dump fails (best-effort)"
+        )
 
     def test_wal_checkpoint_runs_before_tar(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

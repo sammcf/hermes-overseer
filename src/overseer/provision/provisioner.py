@@ -181,6 +181,21 @@ def provision_after_rebuild(
     else:
         logger.info("No snapshot found in %s — skipping state restore", config.overseer.backup_dir)
 
+    # --- Step 5d-pre: Reinstall Homebrew packages from restored Brewfile (best-effort) ---
+    # Snapshot restore extracts ~/.Brewfile; reinstall from it so the package
+    # list matches the pre-rebuild state. Best-effort: failures don't abort.
+    _BREW = "/home/linuxbrew/.linuxbrew/bin/brew"
+    brew_result = run_ssh_command(
+        config.vps.tailscale_hostname,
+        config.vps.ssh_user,
+        f'eval "$({_BREW} shellenv)" 2>/dev/null && {_BREW} bundle install --global 2>&1 || true',
+        timeout=600,
+    )
+    if isinstance(brew_result, Err):
+        logger.warning("brew bundle install failed (continuing): %s", brew_result.error)
+    else:
+        logger.info("brew bundle install complete")
+
     # --- Step 5d: Apply local hermes-agent patches (best-effort) ---
     # Patches live in ~/.config/hermes-overseer/patches/*.patch and are applied
     # via git apply in the hermes-agent working tree after each rebuild.

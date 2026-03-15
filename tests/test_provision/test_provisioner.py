@@ -164,6 +164,8 @@ class TestProvisionHappyPath:
         def _mock_ssh(host, user, cmd, timeout=30):
             if "cloud-init" in cmd:
                 return Ok("cloud-init-done")
+            if "bundle install" in cmd:
+                return Ok("Bundle complete!")
             return Ok("active")
 
         monkeypatch.setattr(
