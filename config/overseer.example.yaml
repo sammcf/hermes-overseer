@@ -30,7 +30,8 @@ vps:
     - ".profile"          # POSIX fallback
     - ".gitconfig"        # git identity and aliases
     - ".config/gh"        # GitHub CLI auth
-    - ".local/share/qmd"  # qmd collection configs and index (embeddings regenerated post-rebuild)
+    - ".local/share/qmd"  # qmd collection configs and embeddings (incremental re-embed post-rebuild)
+    - ".cache/qmd"        # GGUF embedding model (~300MB, avoids re-download on rebuild)
 
 binarylane:
   api_token_env: "BL_API_TOKEN"
