@@ -8,10 +8,11 @@ Type=simple
 ExecStart=/usr/bin/distrobox enter hermes-overseer -- \
     %h/.local/share/hermes-overseer/.venv/bin/python -m overseer \
     --config %h/.config/hermes-overseer/overseer.yaml
+ExecStop=/usr/bin/distrobox enter hermes-overseer -- \
+    pkill -f "python.*-m overseer" || true
 EnvironmentFile=%h/.config/hermes-overseer/env
 Restart=on-failure
 RestartSec=30
-WatchdogSec=600
 
 [Install]
 WantedBy=default.target
