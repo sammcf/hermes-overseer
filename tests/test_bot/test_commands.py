@@ -50,7 +50,7 @@ def ctx(example_config: Config) -> CommandContext:
 
 
 def _allowed_chat(example_config: Config) -> str:
-    return example_config.alerts.telegram.chat_id
+    return example_config.alerts.telegram.dm_chat_id
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +108,41 @@ def test_execute_command_unauthorised_chat_silent(
     cmd = BotCommand(chat_id="BADCHAT", name="help", update_id=1)
     execute_command(cmd, ctx)
     assert sent == []  # silent drop
+
+
+def test_execute_command_from_group_chat_accepted(
+    monkeypatch: pytest.MonkeyPatch, example_config: Config
+) -> None:
+    """Commands from the configured group_chat_id should be accepted."""
+    # Build a config with group_chat_id set
+    import warnings
+    raw = {
+        "vps": {"server_id": 1, "tailscale_hostname": "test"},
+        "alerts": {
+            "telegram": {"dm_chat_id": "111", "group_chat_id": "-100999"},
+            "email": {
+                "from_address": "a@b.com",
+                "to_address": "c@d.com",
+            },
+        },
+    }
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cfg = Config.model_validate(raw)
+    state_ref: list[PollState] = [PollState()]
+    ctx = CommandContext(
+        cfg=cfg,
+        bl_client=MagicMock(spec=httpx.Client),
+        poll_state=state_ref[0],
+        set_poll_state=lambda s: state_ref.__setitem__(0, s),
+    )
+    sent: list[str] = []
+    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setenv(cfg.alerts.telegram.bot_token_env, "TOKEN")
+    # Command from group chat
+    cmd = BotCommand(chat_id="-100999", name="help", update_id=1)
+    execute_command(cmd, ctx)
+    assert sent  # should have received the help text
 
 
 # ---------------------------------------------------------------------------

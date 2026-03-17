@@ -68,9 +68,13 @@ $EDITOR ~/.config/hermes-overseer/overseer.yaml
 ```
 
 Key fields to set:
-- `alerts.telegram.chat_id` — your Telegram user/group ID
+- `alerts.telegram.dm_chat_id` — your Telegram user ID (for RED alerts + DM commands)
+- `alerts.telegram.group_chat_id` — optional; group chat for heartbeats + yellow/orange alerts
 - `alerts.email.from_address` / `to_address` — real email addresses
 - `vps.server_id` — BinaryLane server ID (592953 for current instance)
+
+If `group_chat_id` is set, remember to disable privacy mode on the bot via
+BotFather (`/setprivacy` → Disable) so it can receive commands in the group.
 
 ### Validate config without starting
 

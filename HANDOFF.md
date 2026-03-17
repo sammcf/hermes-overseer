@@ -283,7 +283,10 @@ base OS resists host drift.
 ### 2. Alert Channels
 
 Two independent channels, neither depends on hermes infrastructure:
-- **Telegram** — dedicated overseer bot (separate token/chat from hermes bot)
+- **Telegram** — dedicated overseer bot (separate token/chat from hermes bot).
+  Supports dual-chat routing: low-severity alerts (YELLOW/ORANGE) and heartbeats
+  go to a group chat; RED alerts go to both group and operator DM. Bot commands
+  accepted from either chat.
 - **Email** — to a non-hermes address
 
 ### 3. Connection Allowlist

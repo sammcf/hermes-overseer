@@ -8,6 +8,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, model_validator
 
+from overseer.types import AlertTier
+
 
 class OverseerConfig(BaseModel, frozen=True):
     poll_interval_seconds: int = 120
@@ -62,7 +64,38 @@ class BinaryLaneConfig(BaseModel, frozen=True):
 
 class TelegramConfig(BaseModel, frozen=True):
     bot_token_env: str = "OVERSEER_TG_BOT_TOKEN"
-    chat_id: str
+    dm_chat_id: str
+    group_chat_id: str | None = None
+
+    @property
+    def command_chat_ids(self) -> frozenset[str]:
+        """All configured chat IDs that should receive commands."""
+        ids = {self.dm_chat_id}
+        if self.group_chat_id is not None:
+            ids.add(self.group_chat_id)
+        return frozenset(ids)
+
+    def alert_chat_ids(self, tier: AlertTier) -> frozenset[str]:
+        """Returns which chats to alert based on tier.
+
+        YELLOW/ORANGE: group_chat_id only (fallback to dm_chat_id if group not configured).
+        RED: both dm_chat_id and group_chat_id (or just dm_chat_id if group not configured).
+        """
+        if tier == AlertTier.RED:
+            ids = {self.dm_chat_id}
+            if self.group_chat_id is not None:
+                ids.add(self.group_chat_id)
+            return frozenset(ids)
+        else:
+            # YELLOW or ORANGE
+            if self.group_chat_id is not None:
+                return frozenset({self.group_chat_id})
+            return frozenset({self.dm_chat_id})
+
+    @property
+    def heartbeat_chat_id(self) -> str:
+        """Returns group_chat_id if set, else dm_chat_id."""
+        return self.group_chat_id if self.group_chat_id is not None else self.dm_chat_id
 
 
 class EmailConfig(BaseModel, frozen=True):

@@ -39,7 +39,7 @@ class TestLoadConfig:
         minimal = {
             "vps": {"server_id": 1, "tailscale_hostname": "test-vps"},
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {
                     "from_address": "a@b.com",
                     "to_address": "c@d.com",
@@ -59,7 +59,7 @@ class TestLoadConfig:
             "vps": {"server_id": 99, "tailscale_hostname": "custom"},
             "binarylane": {"max_retries": 10},
             "alerts": {
-                "telegram": {"chat_id": "999"},
+                "telegram": {"dm_chat_id": "999"},
                 "email": {"from_address": "x@y.com", "to_address": "z@w.com"},
             },
         }
@@ -136,7 +136,7 @@ class TestVpsConfigNewFields:
                 "ssh_public_key_path": "~/custom/key.pub",
             },
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
         }
@@ -162,7 +162,7 @@ class TestHermesSecretsConfig:
         data = {
             "vps": {"server_id": 1, "tailscale_hostname": "test"},
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
             "hermes_secrets": {
@@ -205,7 +205,7 @@ class TestFileSecretsConfig:
         data = {
             "vps": {"server_id": 1, "tailscale_hostname": "test"},
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
             "hermes_secrets": {

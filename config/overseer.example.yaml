@@ -41,7 +41,8 @@ binarylane:
 alerts:
   telegram:
     bot_token_env: "OVERSEER_TG_BOT_TOKEN"
-    chat_id: "123456789"
+    dm_chat_id: "123456789"
+    group_chat_id: "-1001234567890"  # optional; heartbeats + yellow/orange alerts go here
   email:
     smtp_host: "smtp.gmail.com"
     smtp_port: 587

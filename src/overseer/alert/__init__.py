@@ -15,6 +15,6 @@ def dispatch_alert(
 ) -> list[Result[Any]]:
     """Send alerts to all channels. Both are attempted regardless of individual failures."""
     results: list[Result[Any]] = []
-    results.append(telegram_channel.send_alert(alerts_config.telegram, signals, tier))
+    results.extend(telegram_channel.send_alert(alerts_config.telegram, signals, tier))
     results.append(email_channel.send_alert(alerts_config.email, signals, tier))
     return results
