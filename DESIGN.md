@@ -77,6 +77,10 @@ with mutable state. The core type system:
 | **ORANGE** | Likely problem | `power_off` + alert + backup |
 | **RED** | Confirmed bad or multiple orange | backup + `rebuild` + revoke keys + alert |
 
+Alert routing by tier: YELLOW/ORANGE go to the group chat only (DM fallback if
+no group configured). RED alerts go to both group and DM to ensure immediate
+operator attention.
+
 Escalation rule: any single RED signal → RED. Two or more ORANGE signals →
 RED. This prevents an attacker from staying just below individual orange
 thresholds.
@@ -110,7 +114,8 @@ runs five independent checks in sequence:
 - Overseer touches a canary file on the VPS every 3 minutes via SSH
 - A bash watcher on the VPS alerts the operator (via hermes's own Telegram
   bot) if the canary goes stale (>1 hour)
-- Overseer sends its own Telegram heartbeat every 30 minutes
+- Overseer sends its own Telegram heartbeat every 30 minutes (to the group
+  chat if configured, else the DM)
 - If overseer can't reach the VPS, that itself is an orange signal
 
 ### 7. Distrobox deployment
@@ -215,7 +220,7 @@ Steps 1–8 are hard dependencies (fail → abort). Steps 9–10 are best-effort
 
 ## Test Coverage
 
-246 tests. All monitors, evaluator, response actions, alert formatting,
+319 tests. All monitors, evaluator, response actions, alert formatting,
 heartbeat, config loading, BL client retry/backoff, provisioner pipeline,
-SSH push/wait, and Tailscale cleanup are covered. External calls (httpx,
-subprocess) are mocked via `respx` and `monkeypatch`.
+SSH push/wait, Tailscale cleanup, and group chat routing are covered. External
+calls (httpx, subprocess) are mocked via `respx` and `monkeypatch`.

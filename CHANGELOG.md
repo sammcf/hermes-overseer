@@ -110,3 +110,36 @@ to `~/.config/hermes-overseer/` as source of truth for future rebuilds.
   + `pip install -e mini-swe-agent` to cloud-init.
 - Added Claude Code installation (`curl ... install.sh | bash`).
 - Added hermes venv + `~/.local/bin` to PATH in `.bashrc`.
+
+## 2026-03-17 — Group chat support for Telegram alerts
+
+**Goal:** Route low-severity alerts and heartbeats to a Telegram group chat,
+keeping RED alerts in the operator's DM for immediate attention.
+
+**Changes:**
+- `config.py` — renamed `TelegramConfig.chat_id` → `dm_chat_id`, added optional
+  `group_chat_id`. Three new helpers: `command_chat_ids` (frozenset of both),
+  `alert_chat_ids(tier)` (tier-based routing), `heartbeat_chat_id` (group
+  preferred).
+- `alert/telegram.py` — `send_alert()` now returns `list[Result]`, iterating
+  over `config.alert_chat_ids(tier)` to fan out per-tier.
+- `alert/__init__.py` — `dispatch_alert` uses `extend()` for telegram results.
+- `bot/commands.py` — auth check uses `command_chat_ids` frozenset (accepts
+  commands from both DM and group).
+- `__main__.py` — heartbeat uses `heartbeat_chat_id` property.
+- `config/overseer.example.yaml` — updated with `dm_chat_id` + `group_chat_id`.
+- Tests updated across 4 files; new test for group chat command acceptance.
+
+**Routing logic:**
+
+| Tier | Destination |
+|------|-------------|
+| YELLOW / ORANGE | `group_chat_id` only (falls back to `dm_chat_id` if unset) |
+| RED | Both `dm_chat_id` and `group_chat_id` |
+| Heartbeat | `group_chat_id` (falls back to `dm_chat_id`) |
+| Bot commands | Accepted from either chat |
+
+**Backwards compatible:** `group_chat_id` defaults to `None`; existing configs
+with only `dm_chat_id` (formerly `chat_id`) behave identically to before.
+
+**319 tests pass** (4 pre-existing SSH failures in CI env). No new dependencies.
