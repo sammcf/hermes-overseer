@@ -24,7 +24,7 @@ _SIGNALS = [
 _ALERTS_CONFIG = AlertsConfig(
     telegram=TelegramConfig(
         bot_token_env="TEST_TG_TOKEN",
-        chat_id="999",
+        dm_chat_id="999",
     ),
     email=EmailConfig(
         smtp_host="smtp.example.com",
@@ -45,7 +45,7 @@ def test_dispatch_alert_calls_both_channels(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("TEST_TG_TOKEN", "tg_token")
     monkeypatch.setenv("TEST_EMAIL_PASSWORD", "email_pass")
 
-    tg_result = Ok({"ok": True})
+    tg_result = [Ok({"ok": True})]
     email_result = Ok(None)
 
     with (
@@ -60,7 +60,8 @@ def test_dispatch_alert_calls_both_channels(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_dispatch_alert_returns_both_results(monkeypatch: pytest.MonkeyPatch) -> None:
-    tg_result = Ok({"ok": True})
+    tg_item = Ok({"ok": True})
+    tg_result = [tg_item]
     email_result = Ok(None)
 
     with (
@@ -69,7 +70,7 @@ def test_dispatch_alert_returns_both_results(monkeypatch: pytest.MonkeyPatch) ->
     ):
         results = dispatch_alert(_ALERTS_CONFIG, _SIGNALS, AlertTier.YELLOW)
 
-    assert results[0] is tg_result
+    assert results[0] is tg_item
     assert results[1] is email_result
 
 
@@ -79,7 +80,7 @@ def test_dispatch_alert_returns_both_results(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_dispatch_telegram_failure_does_not_block_email(monkeypatch: pytest.MonkeyPatch) -> None:
-    tg_result = Err("Telegram timed out", source="telegram")
+    tg_result = [Err("Telegram timed out", source="telegram")]
     email_result = Ok(None)
 
     with (
@@ -94,7 +95,7 @@ def test_dispatch_telegram_failure_does_not_block_email(monkeypatch: pytest.Monk
 
 
 def test_dispatch_email_failure_does_not_block_telegram(monkeypatch: pytest.MonkeyPatch) -> None:
-    tg_result = Ok({"ok": True})
+    tg_result = [Ok({"ok": True})]
     email_result = Err("SMTP connection refused", source="email")
 
     with (
@@ -109,7 +110,7 @@ def test_dispatch_email_failure_does_not_block_telegram(monkeypatch: pytest.Monk
 
 
 def test_dispatch_both_channels_fail() -> None:
-    tg_result = Err("no token", source="telegram")
+    tg_result = [Err("no token", source="telegram")]
     email_result = Err("no password", source="email")
 
     with (

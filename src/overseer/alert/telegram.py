@@ -56,11 +56,11 @@ def send_telegram(bot_token: str, chat_id: str, message: str) -> Result[dict]:  
 
 def send_alert(
     config: TelegramConfig, signals: list[Signal], tier: AlertTier
-) -> Result[dict]:  # type: ignore[type-arg]
+) -> list[Result[dict]]:  # type: ignore[type-arg]
     """Resolve credentials, format, and send a Telegram alert."""
     try:
         bot_token = resolve_secret(config.bot_token_env)
     except RuntimeError as exc:
-        return Err(str(exc), source="telegram")
+        return [Err(str(exc), source="telegram")]
     message = format_alert(signals, tier)
-    return send_telegram(bot_token, config.chat_id, message)
+    return [send_telegram(bot_token, chat_id, message) for chat_id in config.alert_chat_ids(tier)]

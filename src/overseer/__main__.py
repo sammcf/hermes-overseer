@@ -102,7 +102,7 @@ def run_main_loop(cfg: Config) -> None:
     poll_state = PollState()
 
     tg_token = resolve_secret(cfg.alerts.telegram.bot_token_env)
-    tg_chat = cfg.alerts.telegram.chat_id
+    tg_chat = cfg.alerts.telegram.heartbeat_chat_id
 
     last_heartbeat = 0.0
     last_canary = 0.0

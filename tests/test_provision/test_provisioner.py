@@ -216,7 +216,7 @@ class TestProvisionFailures:
             },
             "cost": {"canonical_hermes_config": str(canonical)},
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
         }
@@ -382,7 +382,7 @@ class TestProvisionFailures:
                 "ssh_public_key_path": str(tmp_path / "nonexistent.pub"),
             },
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
         }
@@ -423,7 +423,7 @@ class TestProvisionWithStateRestore:
             "cost": {"canonical_hermes_config": str(canonical)},
             "overseer": {"backup_dir": actual_backup_dir},
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
         }
@@ -588,7 +588,7 @@ class TestProvisionWithPatches:
             "cost": {"canonical_hermes_config": str(canonical)},
             "overseer": {"patches_dir": patches_dir or str(tmp_path / "patches")},
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
         }
@@ -765,7 +765,7 @@ class TestProvisionBaselineReset:
             },
             "cost": {"canonical_hermes_config": str(canonical)},
             "alerts": {
-                "telegram": {"chat_id": "123"},
+                "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},
             },
         }

@@ -197,11 +197,11 @@ _HANDLERS: dict[str, Callable[[BotCommand, CommandContext, str], None]] = {
 
 def execute_command(cmd: BotCommand, ctx: CommandContext) -> None:
     """Dispatch a bot command. Security check: silently drops unauthorised chats."""
-    allowed_chat = ctx.cfg.alerts.telegram.chat_id
-    if cmd.chat_id != allowed_chat:
+    allowed_chats = ctx.cfg.alerts.telegram.command_chat_ids
+    if cmd.chat_id not in allowed_chats:
         logger.warning(
             "Bot command /%s from unauthorised chat %s (allowed: %s)",
-            cmd.name, cmd.chat_id, allowed_chat,
+            cmd.name, cmd.chat_id, allowed_chats,
         )
         return
 
