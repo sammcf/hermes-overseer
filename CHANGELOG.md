@@ -143,3 +143,19 @@ keeping RED alerts in the operator's DM for immediate attention.
 with only `dm_chat_id` (formerly `chat_id`) behave identically to before.
 
 **319 tests pass** (4 pre-existing SSH failures in CI env). No new dependencies.
+
+## 2026-03-18 — WU-001 cleanup: remove dead docker_image, align defaults
+
+**Audit of WU-001** confirmed all plan items implemented. Remaining gaps were
+dead code and default drift:
+
+- Removed vestigial `docker_image` field from `VpsConfig`, provisioner variable
+  gathering, cloud-init template comments, example config, and test fixtures.
+- Aligned `WatchedFilesConfig` code defaults: `orange_on_any_diff` now includes
+  `google_token.json` and `google_client_secret.json` (previously only in
+  example config, not code defaults).
+- Added `TestProvisionFileSecrets` (3 tests): verifies file secrets pushed with
+  mode 0600, missing secrets skipped gracefully, push failures are best-effort.
+- Updated WU-001 plan status to Complete with work log.
+
+**325 tests pass.** mypy clean.

@@ -42,7 +42,6 @@ class VpsConfig(BaseModel, frozen=True):
     tailscale_api_key_env: str = "TS_API_KEY"
     tailscale_tailnet: str = "-"
     ssh_public_key_path: str = "~/.ssh/id_ed25519.pub"
-    docker_image: str = "nikolaik/python-nodejs:python3.11-nodejs20"
     # Paths relative to the hermes user home (parent of hermes_home) to include
     # in snapshots alongside hermes_home/. Use --ignore-failed-read so missing
     # files (e.g. .claude.json before first auth) don't abort the snapshot.
@@ -112,7 +111,7 @@ class AlertsConfig(BaseModel, frozen=True):
 
 
 class WatchedFilesConfig(BaseModel, frozen=True):
-    orange_on_any_diff: list[str] = [".env", "config.yaml"]
+    orange_on_any_diff: list[str] = [".env", "config.yaml", "google_token.json", "google_client_secret.json"]
     orange_on_suspicious_diff: list[str] = ["SOUL.md", "memories/MEMORY.md", "memories/USER.md"]
     yellow_on_any_diff: list[str] = ["cron/jobs.json"]
     yellow_on_new_file: list[str] = ["skills/"]

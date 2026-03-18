@@ -121,9 +121,6 @@ class TestVpsConfigNewFields:
         expected = os.path.expanduser("~/.ssh/id_ed25519.pub")
         assert example_config.vps.ssh_public_key_path == expected
 
-    def test_docker_image_default(self, example_config: Config) -> None:
-        assert example_config.vps.docker_image == "nikolaik/python-nodejs:python3.11-nodejs20"
-
     def test_ssh_public_key_path_expanded(self, tmp_path: Path) -> None:
         """Tilde in ssh_public_key_path is expanded."""
         import os

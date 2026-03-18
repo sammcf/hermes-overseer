@@ -1,6 +1,6 @@
 # WU-001: State Preservation & Local Backend Switch
 
-## Status: Planned
+## Status: Complete
 
 ## Motivation
 
@@ -201,8 +201,33 @@ offsite backup guarantees.
 
 ## Verification
 
-1. `uv run pytest` — all tests pass
-2. `uv run mypy src/` — clean
+1. `uv run pytest` — all tests pass (325 passed)
+2. `uv run mypy src/` — clean (0 issues in 35 files)
 3. Manual: rebuild VPS, verify session history survives
 4. Manual: send Telegram message post-rebuild, verify hermes remembers context
 5. Manual: verify Google OAuth works post-rebuild without re-auth
+
+---
+
+## Work Log
+
+### 2026-03-18: Final cleanup and audit
+
+**Audit findings** (all plan items implemented in prior sessions):
+- §1 Terminal backend → local: done (hermes-canonical.yaml, cloud-init)
+- §2 Periodic snapshot: done (backup/snapshot.py, main loop scheduling)
+- §3 Google OAuth secrets: done (HermesSecretsConfig.file_secrets, provisioner Step 8b)
+- §4 State restore on rebuild: done (provisioner Step 5c)
+- §5 Config additions: done (OverseerConfig backup fields)
+- §6 Monitoring additions: done in example config, code defaults lagged
+
+**Cleanup performed:**
+- Removed dead `docker_image` field from `VpsConfig` (config.py)
+- Removed `docker_image` from `_gather_cloud_init_variables()` (provisioner.py)
+- Removed `docker_image` from cloud-init template comments (both copies)
+- Removed `docker_image` from example config (overseer.example.yaml)
+- Removed `test_docker_image_default` test and `docker_image` from builder test fixtures
+- Aligned `WatchedFilesConfig` code defaults to include `google_token.json` and `google_client_secret.json` in `orange_on_any_diff`
+- Added `TestProvisionFileSecrets` test class (3 tests): mode 0600 verification, missing file graceful skip, push failure best-effort
+
+**False positive dismissed:** Auditor flagged `restore_snapshot` chown only targeting `.hermes/` not extra_paths. Non-issue: tar runs as hermes user via SSH, so extracted files are already owned by hermes:hermes. The explicit chown is defense-in-depth.

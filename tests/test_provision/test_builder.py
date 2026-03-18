@@ -32,7 +32,6 @@ MINIMAL_VARS: dict[str, str] = {
     "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI test@host",
     "tailscale_auth_key": "tskey-auth-abc123",
     "tailscale_hostname": "hermes-vps",
-    "docker_image": "nikolaik/python-nodejs:python3.11-nodejs20",
 }
 
 
@@ -93,7 +92,6 @@ def test_render_default_template_bundled(monkeypatch, tmp_path: Path) -> None:
         "ssh_public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI test@host",
         "tailscale_auth_key": "tskey-auth-test",
         "tailscale_hostname": "hermes-vps",
-        "docker_image": "ubuntu:24.04",
     }
     result = render_cloud_init(real_vars)
     assert isinstance(result, Ok)

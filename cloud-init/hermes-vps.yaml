@@ -5,7 +5,7 @@
 # and triggers the gateway service.
 #
 # Template variables:
-#   ssh_user, ssh_public_key, tailscale_auth_key, tailscale_hostname, docker_image
+#   ssh_user, ssh_public_key, tailscale_auth_key, tailscale_hostname
 
 users:
   - name: ${ssh_user}

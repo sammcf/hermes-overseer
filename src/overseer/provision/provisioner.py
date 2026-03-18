@@ -62,7 +62,6 @@ def _gather_cloud_init_variables(config: Config) -> Result[dict[str, str]]:
         "ssh_public_key": ssh_public_key,
         "tailscale_auth_key": ts_auth_key,
         "tailscale_hostname": config.vps.tailscale_hostname,
-        "docker_image": config.vps.docker_image,
     })
 
 

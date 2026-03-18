@@ -20,7 +20,6 @@ vps:
   tailscale_api_key_env: "TS_API_KEY"
   tailscale_tailnet: "-"
   ssh_public_key_path: "~/.ssh/id_ed25519.pub"
-  docker_image: "nikolaik/python-nodejs:python3.11-nodejs20"
   snapshot_extra_paths:
     - ".claude.json"               # Claude Code OAuth identity
     - ".claude/.credentials.json"  # Claude Code long-lived token
