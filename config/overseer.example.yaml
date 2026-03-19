@@ -5,7 +5,7 @@ overseer:
   canary_stale_threshold_seconds: 3600
   data_dir: "/var/lib/hermes-overseer"
   backup_interval_seconds: 14400   # 4 hours
-  backup_retention_count: 24       # keep ~4 days
+  backup_retention_count: 4        # keep most recent 4 snapshots
   backup_dir: "~/.local/share/hermes-overseer/backups"
   secrets_dir: "~/.config/hermes-overseer"
   patches_dir: "~/.config/hermes-overseer/patches"

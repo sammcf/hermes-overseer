@@ -91,6 +91,7 @@ def _cmd_accept_baseline(cfg: Config) -> None:
 
 def run_main_loop(cfg: Config) -> None:
     """Main poll loop: monitor → evaluate → respond, with heartbeat/canary on separate intervals."""
+    from overseer.backup.snapshot import prune_snapshots, take_snapshot
     from overseer.binarylane.client import create_client
     from overseer.bot.commands import CommandContext, execute_command, parse_update
     from overseer.bot.poller import fetch_updates
@@ -108,6 +109,12 @@ def run_main_loop(cfg: Config) -> None:
     last_canary = 0.0
     last_backup = 0.0
     bot_update_offset: int = 0
+
+    startup_pruned = prune_snapshots(
+        cfg.overseer.backup_dir, cfg.overseer.backup_retention_count
+    )
+    if startup_pruned:
+        logger.info("Startup prune removed %d old snapshot(s)", startup_pruned)
 
     logger.info("Overseer main loop starting")
 
@@ -141,8 +148,6 @@ def run_main_loop(cfg: Config) -> None:
 
         # --- Periodic state snapshot ---
         if now - last_backup >= cfg.overseer.backup_interval_seconds:
-            from overseer.backup.snapshot import prune_snapshots, take_snapshot
-
             snap_result = take_snapshot(
                 cfg.vps.tailscale_hostname,
                 cfg.vps.ssh_user,

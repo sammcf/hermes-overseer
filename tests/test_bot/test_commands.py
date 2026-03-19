@@ -296,6 +296,27 @@ def test_handle_snapshot_success(
     assert any("hermes-state" in s for s in sent)
 
 
+def test_handle_snapshot_success_prunes_old_snapshots(
+    ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
+) -> None:
+    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: None)
+    monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
+    with (
+        patch(
+            "overseer.bot.commands.take_snapshot",
+            return_value=Ok("/backups/hermes-state-20260316T000000Z.tar.gz"),  # type: ignore[arg-type]
+        ),
+        patch("overseer.bot.commands.prune_snapshots", return_value=2) as prune_mock,
+    ):
+        cmd = BotCommand(chat_id=_allowed_chat(example_config), name="snapshot", update_id=1)
+        execute_command(cmd, ctx)
+
+    prune_mock.assert_called_once_with(
+        example_config.overseer.backup_dir,
+        example_config.overseer.backup_retention_count,
+    )
+
+
 def test_handle_snapshot_failure(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
@@ -309,6 +330,24 @@ def test_handle_snapshot_failure(
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="snapshot", update_id=1)
         execute_command(cmd, ctx)
     assert any("failed" in s.lower() for s in sent)
+
+
+def test_handle_snapshot_failure_does_not_prune(
+    ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
+) -> None:
+    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: None)
+    monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
+    with (
+        patch(
+            "overseer.bot.commands.take_snapshot",
+            return_value=Err("ssh error", source="snapshot"),
+        ),
+        patch("overseer.bot.commands.prune_snapshots") as prune_mock,
+    ):
+        cmd = BotCommand(chat_id=_allowed_chat(example_config), name="snapshot", update_id=1)
+        execute_command(cmd, ctx)
+
+    prune_mock.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

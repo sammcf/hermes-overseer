@@ -223,8 +223,8 @@ class TestBackupConfig:
         assert example_config.overseer.backup_interval_seconds == 14400
 
     def test_backup_retention_count_defaults_to_24(self, example_config: Config) -> None:
-        """Default retention of 24 keeps ~4 days at 4-hour intervals."""
-        assert example_config.overseer.backup_retention_count == 24
+        """Default retention keeps the most recent 4 snapshots."""
+        assert example_config.overseer.backup_retention_count == 4
 
     def test_backup_dir_default_is_expanded(self, example_config: Config) -> None:
         """backup_dir tilde is expanded, default is under ~/.local/share."""

@@ -8,7 +8,7 @@ from typing import Callable
 
 import httpx
 
-from overseer.backup.snapshot import dump_brewfile, take_snapshot
+from overseer.backup.snapshot import dump_brewfile, prune_snapshots, take_snapshot
 from overseer.config import Config
 from overseer.monitor.files import pull_watched_files, reset_file_baseline
 from overseer.provision.provisioner import provision_after_rebuild
@@ -153,6 +153,11 @@ def _handle_snapshot(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> No
     if isinstance(result, Err):
         _send(bot_token, cmd.chat_id, f"❌ Snapshot failed: {result.error}")
     else:
+        pruned = prune_snapshots(
+            cfg.overseer.backup_dir, cfg.overseer.backup_retention_count
+        )
+        if pruned:
+            logger.info("Pruned %d old snapshot(s) after /snapshot", pruned)
         filename = result.value.rsplit("/", 1)[-1]
         _send(bot_token, cmd.chat_id, f"✅ Snapshot saved: <code>{filename}</code>")
 
