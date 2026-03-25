@@ -220,19 +220,19 @@ class TestFileSecretsConfig:
 class TestBackupConfig:
     def test_backup_interval_defaults_to_4_hours(self, example_config: Config) -> None:
         """Default backup interval is 14400 seconds (4 hours)."""
-        assert example_config.overseer.backup_interval_seconds == 14400
+        assert example_config.backup.interval_seconds == 14400
 
-    def test_backup_retention_count_defaults_to_24(self, example_config: Config) -> None:
+    def test_backup_retention_count_defaults_to_4(self, example_config: Config) -> None:
         """Default retention keeps the most recent 4 snapshots."""
-        assert example_config.overseer.backup_retention_count == 4
+        assert example_config.backup.retention_count == 4
 
     def test_backup_dir_default_is_expanded(self, example_config: Config) -> None:
         """backup_dir tilde is expanded, default is under ~/.local/share."""
         import os
 
-        assert "~" not in example_config.overseer.backup_dir
-        assert os.path.expanduser("~") in example_config.overseer.backup_dir
-        assert "hermes-overseer" in example_config.overseer.backup_dir
+        assert "~" not in example_config.backup.dir
+        assert os.path.expanduser("~") in example_config.backup.dir
+        assert "hermes-overseer" in example_config.backup.dir
 
     def test_secrets_dir_default_is_expanded(self, example_config: Config) -> None:
         """secrets_dir tilde is expanded, default is under ~/.config."""

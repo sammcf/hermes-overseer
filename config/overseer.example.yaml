@@ -4,11 +4,24 @@ overseer:
   canary_interval_seconds: 180
   canary_stale_threshold_seconds: 3600
   data_dir: "/var/lib/hermes-overseer"
-  backup_interval_seconds: 14400   # 4 hours
-  backup_retention_count: 4        # keep most recent 4 snapshots
-  backup_dir: "~/.local/share/hermes-overseer/backups"
   secrets_dir: "~/.config/hermes-overseer"
   patches_dir: "~/.config/hermes-overseer/patches"
+
+backup:
+  interval_seconds: 14400            # 4 hours
+  retention_count: 4                 # keep most recent 4 snapshots
+  dir: "~/.local/share/hermes-overseer/backups"
+  extra_paths:                       # paths relative to hermes user home, captured alongside hermes_home/
+    - ".claude.json"                 # Claude Code OAuth identity
+    - ".claude/.credentials.json"    # Claude Code long-lived token
+    - ".Brewfile"                    # Homebrew package list (regenerated before each snapshot)
+    - ".bashrc"                      # PATH shims, brew shellenv, user customisations
+    - ".bash_profile"                # login-shell companion to .bashrc
+    - ".profile"                     # POSIX fallback
+    - ".gitconfig"                   # git identity and aliases
+    - ".config/gh"                   # GitHub CLI auth
+    - ".local/share/qmd"            # qmd collection configs and embeddings
+    - ".cache/qmd"                   # GGUF embedding model (~300MB, avoids re-download)
 
 vps:
   server_id: 592953
@@ -20,17 +33,6 @@ vps:
   tailscale_api_key_env: "TS_API_KEY"
   tailscale_tailnet: "-"
   ssh_public_key_path: "~/.ssh/id_ed25519.pub"
-  snapshot_extra_paths:
-    - ".claude.json"               # Claude Code OAuth identity
-    - ".claude/.credentials.json"  # Claude Code long-lived token
-    - ".Brewfile"         # Homebrew package list (regenerated before each snapshot)
-    - ".bashrc"           # PATH shims, brew shellenv, user customisations
-    - ".bash_profile"     # login-shell companion to .bashrc
-    - ".profile"          # POSIX fallback
-    - ".gitconfig"        # git identity and aliases
-    - ".config/gh"        # GitHub CLI auth
-    - ".local/share/qmd"  # qmd collection configs and embeddings (incremental re-embed post-rebuild)
-    - ".cache/qmd"        # GGUF embedding model (~300MB, avoids re-download on rebuild)
 
 binarylane:
   api_token_env: "BL_API_TOKEN"

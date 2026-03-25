@@ -421,7 +421,7 @@ class TestProvisionWithStateRestore:
                 "ssh_public_key_path": str(pubkey),
             },
             "cost": {"canonical_hermes_config": str(canonical)},
-            "overseer": {"backup_dir": actual_backup_dir},
+            "backup": {"dir": actual_backup_dir},
             "alerts": {
                 "telegram": {"dm_chat_id": "123"},
                 "email": {"from_address": "a@b.com", "to_address": "c@d.com"},

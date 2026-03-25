@@ -96,15 +96,15 @@ async def handle_snapshot(request: web.Request) -> web.Response:
             cfg.vps.tailscale_hostname,
             cfg.vps.ssh_user,
             cfg.vps.hermes_home,
-            cfg.overseer.backup_dir,
-            cfg.vps.snapshot_extra_paths,
+            cfg.backup.dir,
+            cfg.backup.extra_paths,
         )
 
     if isinstance(result, Err):
         return web.json_response({"error": result.error}, status=500)
 
     # Prune after successful snapshot
-    pruned = prune_snapshots(cfg.overseer.backup_dir, cfg.overseer.backup_retention_count)
+    pruned = prune_snapshots(cfg.backup.dir, cfg.backup.retention_count)
     filename = result.value.rsplit("/", 1)[-1]
     return web.json_response({"filename": filename, "pruned": pruned})
 

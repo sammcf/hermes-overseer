@@ -131,7 +131,7 @@ def restore_snapshot(
     hermes_parent = str(hermes_path.parent)
     hermes_dir = hermes_path.name
 
-    push_result = rsync_push(hostname, user, archive_path, "/tmp/", timeout=120)
+    push_result = rsync_push(hostname, user, archive_path, "/tmp/", timeout=600)
     if isinstance(push_result, Err):
         return push_result
 

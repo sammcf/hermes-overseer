@@ -127,7 +127,7 @@ def _cmd_forensics(cfg: Config, args: argparse.Namespace) -> None:
     # Determine snapshot path
     snapshot_path = args.snapshot
     if snapshot_path is None:
-        backup_dir = cfg.overseer.backup_dir
+        backup_dir = cfg.backup.dir
         archives = sorted(glob.glob(f"{backup_dir}/hermes-state-*.tar.gz"))
         if not archives:
             print(f"No snapshots found in {backup_dir}", file=sys.stderr)
@@ -243,7 +243,7 @@ async def run_main_loop(cfg: Config) -> None:
     last_backup = 0.0
 
     startup_pruned = prune_snapshots(
-        cfg.overseer.backup_dir, cfg.overseer.backup_retention_count
+        cfg.backup.dir, cfg.backup.retention_count
     )
     if startup_pruned:
         logger.info("Startup prune removed %d old snapshot(s)", startup_pruned)
@@ -324,21 +324,21 @@ async def run_main_loop(cfg: Config) -> None:
                 last_canary = now
 
             # --- Periodic state snapshot (blocking SSH → thread) ---
-            if now - last_backup >= cfg.overseer.backup_interval_seconds:
+            if now - last_backup >= cfg.backup.interval_seconds:
                 snap_result = await asyncio.to_thread(
                     take_snapshot,
                     cfg.vps.tailscale_hostname,
                     cfg.vps.ssh_user,
                     cfg.vps.hermes_home,
-                    cfg.overseer.backup_dir,
-                    cfg.vps.snapshot_extra_paths,
+                    cfg.backup.dir,
+                    cfg.backup.extra_paths,
                 )
                 if isinstance(snap_result, Err):
                     logger.warning("Snapshot failed: %s", snap_result.error)
                 else:
                     logger.info("Snapshot saved: %s", snap_result.value)
                     pruned = prune_snapshots(
-                        cfg.overseer.backup_dir, cfg.overseer.backup_retention_count
+                        cfg.backup.dir, cfg.backup.retention_count
                     )
                     if pruned:
                         logger.info("Pruned %d old snapshot(s)", pruned)

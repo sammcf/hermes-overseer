@@ -220,7 +220,7 @@ def provision_after_rebuild(
         return ci_result
 
     # --- Step 5c: Restore state from latest snapshot (best-effort) ---
-    latest_snapshot = find_latest_snapshot(config.overseer.backup_dir)
+    latest_snapshot = find_latest_snapshot(config.backup.dir)
     if latest_snapshot:
         logger.info("Restoring state from snapshot: %s", latest_snapshot)
         restore_result = restore_snapshot(
@@ -234,7 +234,7 @@ def provision_after_rebuild(
         else:
             logger.info("State restore complete: %s", restore_result.value)
     else:
-        logger.info("No snapshot found in %s — skipping state restore", config.overseer.backup_dir)
+        logger.info("No snapshot found in %s — skipping state restore", config.backup.dir)
 
     # --- Step 5d-pre: Reinstall Homebrew packages from restored Brewfile (best-effort) ---
     # Snapshot restore extracts ~/.Brewfile; reinstall from it so the package

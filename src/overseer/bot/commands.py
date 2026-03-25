@@ -147,14 +147,14 @@ async def _handle_snapshot(cmd: BotCommand, ctx: CommandContext, bot_token: str)
         cfg.vps.tailscale_hostname,
         cfg.vps.ssh_user,
         cfg.vps.hermes_home,
-        cfg.overseer.backup_dir,
-        extra_paths=cfg.vps.snapshot_extra_paths,
+        cfg.backup.dir,
+        extra_paths=cfg.backup.extra_paths,
     )
     if isinstance(result, Err):
         await _send(bot_token, cmd.chat_id, f"❌ Snapshot failed: {result.error}")
     else:
         pruned = prune_snapshots(
-            cfg.overseer.backup_dir, cfg.overseer.backup_retention_count
+            cfg.backup.dir, cfg.backup.retention_count
         )
         if pruned:
             logger.info("Pruned %d old snapshot(s) after /snapshot", pruned)

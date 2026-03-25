@@ -341,8 +341,8 @@ async def test_handle_snapshot_success_prunes_old_snapshots(
         await execute_command(cmd, ctx)
 
     prune_mock.assert_called_once_with(
-        example_config.overseer.backup_dir,
-        example_config.overseer.backup_retention_count,
+        example_config.backup.dir,
+        example_config.backup.retention_count,
     )
 
 

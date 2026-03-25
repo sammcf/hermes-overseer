@@ -17,18 +17,28 @@ class OverseerConfig(BaseModel, frozen=True):
     canary_interval_seconds: int = 180
     canary_stale_threshold_seconds: int = 3600
     data_dir: str = "/var/lib/hermes-overseer"
-    backup_interval_seconds: int = 14400  # 4 hours
-    backup_retention_count: int = 4       # keep most recent 4 snapshots
-    backup_dir: str = "~/.local/share/hermes-overseer/backups"
     secrets_dir: str = "~/.config/hermes-overseer"
     patches_dir: str = "~/.config/hermes-overseer/patches"
 
     @model_validator(mode="after")
     def expand_paths(self) -> OverseerConfig:
         object.__setattr__(self, "data_dir", os.path.expanduser(self.data_dir))
-        object.__setattr__(self, "backup_dir", os.path.expanduser(self.backup_dir))
         object.__setattr__(self, "secrets_dir", os.path.expanduser(self.secrets_dir))
         object.__setattr__(self, "patches_dir", os.path.expanduser(self.patches_dir))
+        return self
+
+
+class BackupConfig(BaseModel, frozen=True):
+    """Snapshot capture and retention settings."""
+
+    interval_seconds: int = 14400  # 4 hours
+    retention_count: int = 4       # keep most recent 4 snapshots
+    dir: str = "~/.local/share/hermes-overseer/backups"
+    extra_paths: list[str] = [".claude.json", ".claude"]
+
+    @model_validator(mode="after")
+    def expand_paths(self) -> BackupConfig:
+        object.__setattr__(self, "dir", os.path.expanduser(self.dir))
         return self
 
 
@@ -42,10 +52,6 @@ class VpsConfig(BaseModel, frozen=True):
     tailscale_api_key_env: str = "TS_API_KEY"
     tailscale_tailnet: str = "-"
     ssh_public_key_path: str = "~/.ssh/id_ed25519.pub"
-    # Paths relative to the hermes user home (parent of hermes_home) to include
-    # in snapshots alongside hermes_home/. Use --ignore-failed-read so missing
-    # files (e.g. .claude.json before first auth) don't abort the snapshot.
-    snapshot_extra_paths: list[str] = [".claude.json", ".claude"]
 
     @model_validator(mode="after")
     def expand_paths(self) -> VpsConfig:
@@ -212,6 +218,7 @@ class Config(BaseModel, frozen=True):
 
     overseer: OverseerConfig = OverseerConfig()
     vps: VpsConfig
+    backup: BackupConfig = BackupConfig()
     binarylane: BinaryLaneConfig = BinaryLaneConfig()
     alerts: AlertsConfig
     monitor: MonitorConfig = MonitorConfig()
