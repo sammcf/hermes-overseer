@@ -41,7 +41,7 @@ class CommandContext:
     """Runtime context passed to command handlers."""
 
     cfg: Config
-    bl_client: httpx.Client
+    bl_client: httpx.AsyncClient
     poll_state: PollState
     set_poll_state: Callable[[PollState], None]
 
@@ -68,11 +68,11 @@ def parse_update(update: dict) -> BotCommand | None:  # type: ignore[type-arg]
 # ---------------------------------------------------------------------------
 
 
-def _send(bot_token: str, chat_id: str, text: str) -> None:
+async def _send(bot_token: str, chat_id: str, text: str) -> None:
     """Fire-and-forget send. Errors are logged but not raised."""
     from overseer.alert.telegram import send_telegram
 
-    result = send_telegram(bot_token, chat_id, text)
+    result = await send_telegram(bot_token, chat_id, text)
     if isinstance(result, Err):
         logger.warning("Bot reply failed: %s", result.error)
 
@@ -88,11 +88,11 @@ def _resolve_token(cfg: Config) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _handle_help(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
-    _send(bot_token, cmd.chat_id, _HELP_TEXT)
+async def _handle_help(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
+    await _send(bot_token, cmd.chat_id, _HELP_TEXT)
 
 
-def _handle_status(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
+async def _handle_status(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
     state = ctx.poll_state
     last = (
         state.last_poll_time.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -105,11 +105,11 @@ def _handle_status(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None
         f"Last poll: <i>{last}</i>\n"
         f"Sustained unknown count: {state.sustained_unknown_count}"
     )
-    _send(bot_token, cmd.chat_id, msg)
+    await _send(bot_token, cmd.chat_id, msg)
 
 
-def _handle_baseline(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
-    _send(bot_token, cmd.chat_id, "Pulling VPS files and resetting baseline…")
+async def _handle_baseline(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
+    await _send(bot_token, cmd.chat_id, "Pulling VPS files and resetting baseline…")
     cfg = ctx.cfg
     # Regenerate Brewfile before pulling so the snapshot always has a fresh package list
     dump_brewfile(cfg.vps.tailscale_hostname, cfg.vps.ssh_user)
@@ -121,27 +121,27 @@ def _handle_baseline(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> No
         state_dir=cfg.overseer.data_dir,
     )
     if isinstance(pull, Err):
-        _send(bot_token, cmd.chat_id, f"Baseline pull failed: {pull.error}")
+        await _send(bot_token, cmd.chat_id, f"Baseline pull failed: {pull.error}")
         return
     reset = reset_file_baseline(cfg.overseer.data_dir)
     if isinstance(reset, Err):
-        _send(bot_token, cmd.chat_id, f"Baseline reset failed: {reset.error}")
+        await _send(bot_token, cmd.chat_id, f"Baseline reset failed: {reset.error}")
         return
-    _send(bot_token, cmd.chat_id, "✅ Baseline accepted.")
+    await _send(bot_token, cmd.chat_id, "✅ Baseline accepted.")
 
 
-def _handle_clear(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
+async def _handle_clear(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
     old_count = ctx.poll_state.sustained_unknown_count
     ctx.set_poll_state(replace(ctx.poll_state, sustained_unknown_count=0))
-    _send(
+    await _send(
         bot_token,
         cmd.chat_id,
         f"✅ Cleared. sustained_unknown_count reset from {old_count} to 0.",
     )
 
 
-def _handle_snapshot(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
-    _send(bot_token, cmd.chat_id, "Taking snapshot…")
+async def _handle_snapshot(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
+    await _send(bot_token, cmd.chat_id, "Taking snapshot…")
     cfg = ctx.cfg
     result = take_snapshot(
         cfg.vps.tailscale_hostname,
@@ -151,7 +151,7 @@ def _handle_snapshot(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> No
         extra_paths=cfg.vps.snapshot_extra_paths,
     )
     if isinstance(result, Err):
-        _send(bot_token, cmd.chat_id, f"❌ Snapshot failed: {result.error}")
+        await _send(bot_token, cmd.chat_id, f"❌ Snapshot failed: {result.error}")
     else:
         pruned = prune_snapshots(
             cfg.overseer.backup_dir, cfg.overseer.backup_retention_count
@@ -159,19 +159,19 @@ def _handle_snapshot(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> No
         if pruned:
             logger.info("Pruned %d old snapshot(s) after /snapshot", pruned)
         filename = result.value.rsplit("/", 1)[-1]
-        _send(bot_token, cmd.chat_id, f"✅ Snapshot saved: <code>{filename}</code>")
+        await _send(bot_token, cmd.chat_id, f"✅ Snapshot saved: <code>{filename}</code>")
 
 
-def _handle_rebuild(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
+async def _handle_rebuild(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> None:
     # Ack immediately — the rebuild blocks for ~5 minutes
-    _send(
+    await _send(
         bot_token,
         cmd.chat_id,
         "🔄 Rebuild started. This takes ~5 minutes. I'll report back when done.",
     )
     result = provision_after_rebuild(ctx.cfg, ctx.bl_client)
     if isinstance(result, Err):
-        _send(bot_token, cmd.chat_id, f"❌ Rebuild failed: {result.error}")
+        await _send(bot_token, cmd.chat_id, f"❌ Rebuild failed: {result.error}")
     else:
         r = result.value
         lines = [
@@ -180,10 +180,10 @@ def _handle_rebuild(cmd: BotCommand, ctx: CommandContext, bot_token: str) -> Non
             f"Env pushed:    {'✓' if r.env_pushed else '✗'}",
             f"Service:       {'✓' if r.service_started else '✗'}",
         ]
-        _send(bot_token, cmd.chat_id, "\n".join(lines))
+        await _send(bot_token, cmd.chat_id, "\n".join(lines))
 
 
-_HANDLERS: dict[str, Callable[[BotCommand, CommandContext, str], None]] = {
+_HANDLERS: dict[str, Callable] = {
     "help": _handle_help,
     "start": _handle_help,
     "commands": _handle_help,
@@ -200,7 +200,7 @@ _HANDLERS: dict[str, Callable[[BotCommand, CommandContext, str], None]] = {
 # ---------------------------------------------------------------------------
 
 
-def execute_command(cmd: BotCommand, ctx: CommandContext) -> None:
+async def execute_command(cmd: BotCommand, ctx: CommandContext) -> None:
     """Dispatch a bot command. Security check: silently drops unauthorised chats."""
     allowed_chats = ctx.cfg.alerts.telegram.command_chat_ids
     if cmd.chat_id not in allowed_chats:
@@ -215,7 +215,7 @@ def execute_command(cmd: BotCommand, ctx: CommandContext) -> None:
 
     handler = _HANDLERS.get(cmd.name)
     if handler is None:
-        _send(bot_token, cmd.chat_id, f"Unknown command: /{cmd.name}\n\n{_HELP_TEXT}")
+        await _send(bot_token, cmd.chat_id, f"Unknown command: /{cmd.name}\n\n{_HELP_TEXT}")
         return
 
-    handler(cmd, ctx, bot_token)
+    await handler(cmd, ctx, bot_token)

@@ -68,7 +68,6 @@ monitor:
       - "personas/WITNESS.md"
       - "personas/taxonomy.json"
     yellow_on_any_diff:
-      - "cron/jobs.json"
       - "auth.json"    # Nous + Codex OAuth tokens (refresh expected but want visibility)
     yellow_on_new_file:
       - "skills/"
@@ -117,6 +116,18 @@ monitor:
 
   sustained_unknown_threshold: 3
 
+  session_thresholds:
+    window_hours: 6
+    inactivity_alert_hours: 24
+    max_tool_calls_per_session: 200
+    max_tokens_per_window: 2000000
+    max_session_duration_hours: 8.0
+
+  token_budget:
+    window_hours: 6
+    warn_tokens: 1000000
+    critical_tokens: 3000000
+
 cost:
   providers:
     openrouter:
@@ -151,6 +162,12 @@ response:
     actions: ["alert"]
   red:
     actions: ["alert", "rebuild"]
+
+api:
+  enabled: false          # set to true once OVERSEER_API_TOKEN is configured
+  host: "0.0.0.0"        # listen on all interfaces (Tailscale ACL provides network auth)
+  port: 8900
+  bearer_token_env: "OVERSEER_API_TOKEN"
 
 hermes_secrets:
   env_mapping:

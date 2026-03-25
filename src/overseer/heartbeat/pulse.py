@@ -7,7 +7,7 @@ import httpx
 from overseer.types import Err, Ok, Result
 
 
-def send_pulse(bot_token: str, chat_id: str, status_summary: str) -> Result[dict]:  # type: ignore[type-arg]
+async def send_pulse(bot_token: str, chat_id: str, status_summary: str) -> Result[dict]:  # type: ignore[type-arg]
     """POST a heartbeat pulse to the Telegram Bot API.
 
     Args:
@@ -24,7 +24,8 @@ def send_pulse(bot_token: str, chat_id: str, status_summary: str) -> Result[dict
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
 
     try:
-        response = httpx.post(url, json=payload, timeout=15)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, timeout=15)
         data: dict = response.json()  # type: ignore[type-arg]
         if not data.get("ok"):
             description = data.get("description", "unknown error")

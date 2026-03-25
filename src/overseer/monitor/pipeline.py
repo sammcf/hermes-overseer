@@ -14,6 +14,7 @@ from overseer.monitor.config_drift import check_config_drift
 from overseer.monitor.connections import check_connections, evaluate_sustained_unknowns
 from overseer.monitor.files import evaluate_file_changes, pull_watched_files
 from overseer.monitor.metrics import check_bl_metrics, check_bl_threshold_alerts
+from overseer.monitor.session_db import check_session_activity, check_token_budget
 from overseer.response.actions import execute_actions, get_action_sequence
 from overseer.response.evaluator import evaluate
 from overseer.types import AlertTier, Err, Ok, PollState, Result, Signal
@@ -156,6 +157,25 @@ def run_poll_cycle(
 
     signals.extend(_guard("config_drift", _drift_check))
 
+    # 6. Hermes session DB — activity and token budget
+    hermes_db = f"{config.vps.hermes_home}/state.db"
+    signals.extend(_guard(
+        "session_db",
+        check_session_activity,
+        hostname=config.vps.tailscale_hostname,
+        user=config.vps.ssh_user,
+        hermes_db_path=hermes_db,
+        thresholds=config.monitor.session_thresholds,
+    ))
+    signals.extend(_guard(
+        "token_budget",
+        check_token_budget,
+        hostname=config.vps.tailscale_hostname,
+        user=config.vps.ssh_user,
+        hermes_db_path=hermes_db,
+        budget=config.monitor.token_budget,
+    ))
+
     updated_state = replace(
         poll_state,
         sustained_unknown_count=new_sustained,
@@ -164,7 +184,7 @@ def run_poll_cycle(
     return signals, updated_state
 
 
-def run_response_cycle(
+async def run_response_cycle(
     signals: list[Signal],
     config: Config,
     bl_client: httpx.Client,
@@ -179,7 +199,7 @@ def run_response_cycle(
         return []
 
     actions = get_action_sequence(tier, config.response)
-    return execute_actions(
+    return await execute_actions(
         actions=actions,
         server_id=config.vps.server_id,
         bl_client=bl_client,

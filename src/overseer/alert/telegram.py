@@ -35,14 +35,15 @@ def format_alert(signals: list[Signal], tier: AlertTier) -> str:
     return "\n".join(lines)
 
 
-def send_telegram(bot_token: str, chat_id: str, message: str) -> Result[dict]:  # type: ignore[type-arg]
+async def send_telegram(bot_token: str, chat_id: str, message: str) -> Result[dict]:  # type: ignore[type-arg]
     """POST a message to the Telegram Bot API. Returns Ok(response_json) or Err."""
     if len(message) > _MAX_MESSAGE_LEN:
         message = message[: _MAX_MESSAGE_LEN - 3] + "..."
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "HTML"}
     try:
-        response = httpx.post(url, json=payload, timeout=15)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, timeout=15)
         data: dict = response.json()  # type: ignore[type-arg]
         if not data.get("ok"):
             description = data.get("description", "unknown error")
@@ -54,7 +55,7 @@ def send_telegram(bot_token: str, chat_id: str, message: str) -> Result[dict]:  
         return Err(f"Telegram HTTP error: {exc}", source="telegram")
 
 
-def send_alert(
+async def send_alert(
     config: TelegramConfig, signals: list[Signal], tier: AlertTier
 ) -> list[Result[dict]]:  # type: ignore[type-arg]
     """Resolve credentials, format, and send a Telegram alert."""
@@ -63,4 +64,7 @@ def send_alert(
     except RuntimeError as exc:
         return [Err(str(exc), source="telegram")]
     message = format_alert(signals, tier)
-    return [send_telegram(bot_token, chat_id, message) for chat_id in config.alert_chat_ids(tier)]
+    results = []
+    for chat_id in config.alert_chat_ids(tier):
+        results.append(await send_telegram(bot_token, chat_id, message))
+    return results

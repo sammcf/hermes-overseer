@@ -89,7 +89,7 @@ class TestMonitorConfig:
         wf = example_config.monitor.watched_files
         assert ".env" in wf.orange_on_any_diff
         assert "SOUL.md" in wf.orange_on_suspicious_diff
-        assert "cron/jobs.json" in wf.yellow_on_any_diff
+        assert "auth.json" in wf.yellow_on_any_diff
 
     def test_connection_allowlist_populated(self, example_config: Config) -> None:
         al = example_config.monitor.connection_allowlist

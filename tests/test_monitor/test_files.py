@@ -91,14 +91,14 @@ def test_evaluate_no_changes(tmp_path: Path) -> None:
     watched = WatchedFilesConfig(
         orange_on_any_diff=[".env"],
         orange_on_suspicious_diff=["SOUL.md"],
-        yellow_on_any_diff=["cron/jobs.json"],
+        yellow_on_any_diff=[],
         yellow_on_new_file=["skills/"],
     )
     state_dir = _make_state_dir(
         tmp_path,
         hermes_home,
-        current_files={".env": "KEY=value\n", "SOUL.md": "soul\n", "cron/jobs.json": "{}"},
-        last_good_files={".env": "KEY=value\n", "SOUL.md": "soul\n", "cron/jobs.json": "{}"},
+        current_files={".env": "KEY=value\n", "SOUL.md": "soul\n"},
+        last_good_files={".env": "KEY=value\n", "SOUL.md": "soul\n"},
     )
 
     signals = evaluate_file_changes(hermes_home, watched, state_dir)
@@ -154,21 +154,21 @@ def test_evaluate_yellow_on_any_diff(tmp_path: Path) -> None:
     watched = WatchedFilesConfig(
         orange_on_any_diff=[],
         orange_on_suspicious_diff=[],
-        yellow_on_any_diff=["cron/jobs.json"],
+        yellow_on_any_diff=["logs/gateway.log"],
         yellow_on_new_file=[],
     )
     state_dir = _make_state_dir(
         tmp_path,
         hermes_home,
-        current_files={"cron/jobs.json": '{"jobs": [1]}'},
-        last_good_files={"cron/jobs.json": '{"jobs": []}'},
+        current_files={"logs/gateway.log": "line1\nline2\n"},
+        last_good_files={"logs/gateway.log": "line1\n"},
     )
 
     signals = evaluate_file_changes(hermes_home, watched, state_dir)
 
     assert len(signals) == 1
     assert signals[0].tier == AlertTier.YELLOW
-    assert "cron/jobs.json" in signals[0].message
+    assert "logs/gateway.log" in signals[0].message
 
 
 def test_evaluate_yellow_on_new_file(tmp_path: Path) -> None:
@@ -249,7 +249,7 @@ def test_reset_baseline_then_evaluate_produces_no_signals(tmp_path: Path) -> Non
     watched = WatchedFilesConfig(
         orange_on_any_diff=[".env"],
         orange_on_suspicious_diff=["SOUL.md"],
-        yellow_on_any_diff=["cron/jobs.json"],
+        yellow_on_any_diff=["logs/gateway.log"],
         yellow_on_new_file=[],
     )
     state_dir = _make_state_dir(
@@ -258,12 +258,12 @@ def test_reset_baseline_then_evaluate_produces_no_signals(tmp_path: Path) -> Non
         current_files={
             ".env": "KEY=value\n",
             "SOUL.md": "intentional hermes edits\n",
-            "cron/jobs.json": '{"jobs": [1, 2, 3]}',
+            "logs/gateway.log": "line1\nline2\n",
         },
         last_good_files={
             ".env": "KEY=old\n",
             "SOUL.md": "original\n",
-            "cron/jobs.json": "{}",
+            "logs/gateway.log": "line1\n",
         },
     )
 

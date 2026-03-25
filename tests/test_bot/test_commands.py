@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -43,7 +43,7 @@ def ctx(example_config: Config) -> CommandContext:
     state_ref: list[PollState] = [PollState()]
     return CommandContext(
         cfg=example_config,
-        bl_client=MagicMock(spec=httpx.Client),
+        bl_client=MagicMock(spec=httpx.AsyncClient),
         poll_state=state_ref[0],
         set_poll_state=lambda s: state_ref.__setitem__(0, s),
     )
@@ -97,24 +97,23 @@ def test_parse_update_ignores_extra_text() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_execute_command_unauthorised_chat_silent(
+async def test_execute_command_unauthorised_chat_silent(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sent: list[str] = []
     monkeypatch.setattr(
         "overseer.bot.commands._send",
-        lambda token, chat, text: sent.append(text),
+        AsyncMock(side_effect=lambda token, chat, text: sent.append(text)),
     )
     cmd = BotCommand(chat_id="BADCHAT", name="help", update_id=1)
-    execute_command(cmd, ctx)
+    await execute_command(cmd, ctx)
     assert sent == []  # silent drop
 
 
-def test_execute_command_from_group_chat_accepted(
+async def test_execute_command_from_group_chat_accepted(
     monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     """Commands from the configured group_chat_id should be accepted."""
-    # Build a config with group_chat_id set
     import warnings
     raw = {
         "vps": {"server_id": 1, "tailscale_hostname": "test"},
@@ -132,16 +131,19 @@ def test_execute_command_from_group_chat_accepted(
     state_ref: list[PollState] = [PollState()]
     ctx = CommandContext(
         cfg=cfg,
-        bl_client=MagicMock(spec=httpx.Client),
+        bl_client=MagicMock(spec=httpx.AsyncClient),
         poll_state=state_ref[0],
         set_poll_state=lambda s: state_ref.__setitem__(0, s),
     )
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(cfg.alerts.telegram.bot_token_env, "TOKEN")
     # Command from group chat
     cmd = BotCommand(chat_id="-100999", name="help", update_id=1)
-    execute_command(cmd, ctx)
+    await execute_command(cmd, ctx)
     assert sent  # should have received the help text
 
 
@@ -150,14 +152,17 @@ def test_execute_command_from_group_chat_accepted(
 # ---------------------------------------------------------------------------
 
 
-def test_handle_help_contains_all_commands(
+async def test_handle_help_contains_all_commands(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     cmd = BotCommand(chat_id=_allowed_chat(example_config), name="help", update_id=1)
-    execute_command(cmd, ctx)
+    await execute_command(cmd, ctx)
     assert sent
     text = sent[0]
     for keyword in ("/status", "/baseline", "/clear", "/snapshot", "/rebuild", "/help"):
@@ -169,27 +174,33 @@ def test_handle_help_contains_all_commands(
 # ---------------------------------------------------------------------------
 
 
-def test_handle_status_never_polled(
+async def test_handle_status_never_polled(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     cmd = BotCommand(chat_id=_allowed_chat(example_config), name="status", update_id=1)
-    execute_command(cmd, ctx)
+    await execute_command(cmd, ctx)
     assert "never" in sent[0].lower()
 
 
-def test_handle_status_shows_last_poll_time(
+async def test_handle_status_shows_last_poll_time(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     ts = datetime(2026, 3, 16, 9, 0, 0, tzinfo=UTC)
     ctx.poll_state = PollState(last_poll_time=ts, sustained_unknown_count=2)
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     cmd = BotCommand(chat_id=_allowed_chat(example_config), name="status", update_id=1)
-    execute_command(cmd, ctx)
+    await execute_command(cmd, ctx)
     assert "2026-03-16T09:00:00Z" in sent[0]
     assert "2" in sent[0]  # sustained count
 
@@ -199,17 +210,20 @@ def test_handle_status_shows_last_poll_time(
 # ---------------------------------------------------------------------------
 
 
-def test_handle_clear_resets_count(
+async def test_handle_clear_resets_count(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     new_states: list[PollState] = []
     ctx.poll_state = PollState(sustained_unknown_count=5)
     ctx.set_poll_state = lambda s: new_states.append(s)
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     cmd = BotCommand(chat_id=_allowed_chat(example_config), name="clear", update_id=1)
-    execute_command(cmd, ctx)
+    await execute_command(cmd, ctx)
     assert new_states[0].sustained_unknown_count == 0
     assert "0" in sent[0]
 
@@ -219,11 +233,14 @@ def test_handle_clear_resets_count(
 # ---------------------------------------------------------------------------
 
 
-def test_handle_baseline_pull_failure(
+async def test_handle_baseline_pull_failure(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with (
         patch("overseer.bot.commands.dump_brewfile"),
@@ -233,15 +250,18 @@ def test_handle_baseline_pull_failure(
         ),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="baseline", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
     assert any("failed" in s.lower() for s in sent)
 
 
-def test_handle_baseline_success(
+async def test_handle_baseline_success(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with (
         patch("overseer.bot.commands.dump_brewfile"),
@@ -249,16 +269,19 @@ def test_handle_baseline_success(
         patch("overseer.bot.commands.reset_file_baseline", return_value=Ok("/path/last_good")),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="baseline", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
     assert any("accepted" in s.lower() for s in sent)
 
 
-def test_handle_baseline_dumps_brewfile_before_pull(
+async def test_handle_baseline_dumps_brewfile_before_pull(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     """dump_brewfile must be called before pull_watched_files on baseline."""
     call_log: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: None)
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: None),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with (
         patch(
@@ -272,7 +295,7 @@ def test_handle_baseline_dumps_brewfile_before_pull(
         patch("overseer.bot.commands.reset_file_baseline", return_value=Ok("/path/last_good")),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="baseline", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
     assert call_log.index("brew") < call_log.index("pull")
 
 
@@ -281,25 +304,31 @@ def test_handle_baseline_dumps_brewfile_before_pull(
 # ---------------------------------------------------------------------------
 
 
-def test_handle_snapshot_success(
+async def test_handle_snapshot_success(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with patch(
         "overseer.bot.commands.take_snapshot",
         return_value=Ok("/backups/hermes-state-20260316T000000Z.tar.gz"),  # type: ignore[arg-type]
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="snapshot", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
     assert any("hermes-state" in s for s in sent)
 
 
-def test_handle_snapshot_success_prunes_old_snapshots(
+async def test_handle_snapshot_success_prunes_old_snapshots(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: None)
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: None),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with (
         patch(
@@ -309,7 +338,7 @@ def test_handle_snapshot_success_prunes_old_snapshots(
         patch("overseer.bot.commands.prune_snapshots", return_value=2) as prune_mock,
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="snapshot", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
 
     prune_mock.assert_called_once_with(
         example_config.overseer.backup_dir,
@@ -317,25 +346,31 @@ def test_handle_snapshot_success_prunes_old_snapshots(
     )
 
 
-def test_handle_snapshot_failure(
+async def test_handle_snapshot_failure(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with patch(
         "overseer.bot.commands.take_snapshot",
         return_value=Err("ssh error", source="snapshot"),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="snapshot", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
     assert any("failed" in s.lower() for s in sent)
 
 
-def test_handle_snapshot_failure_does_not_prune(
+async def test_handle_snapshot_failure_does_not_prune(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: None)
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: None),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     with (
         patch(
@@ -345,7 +380,7 @@ def test_handle_snapshot_failure_does_not_prune(
         patch("overseer.bot.commands.prune_snapshots") as prune_mock,
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="snapshot", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
 
     prune_mock.assert_not_called()
 
@@ -355,14 +390,14 @@ def test_handle_snapshot_failure_does_not_prune(
 # ---------------------------------------------------------------------------
 
 
-def test_handle_rebuild_sends_ack_before_provision(
+async def test_handle_rebuild_sends_ack_before_provision(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     """Ack message must be sent BEFORE the blocking provision_after_rebuild call."""
     call_log: list[str] = []
     monkeypatch.setattr(
         "overseer.bot.commands._send",
-        lambda t, c, text: call_log.append(("send", text)),
+        AsyncMock(side_effect=lambda t, c, text: call_log.append(("send", text))),
     )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
 
@@ -379,18 +414,21 @@ def test_handle_rebuild_sends_ack_before_provision(
 
     with patch("overseer.bot.commands.provision_after_rebuild", side_effect=_fake_provision):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="rebuild", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
 
     assert call_log[0][0] == "send", "ack should be first"
     assert call_log[1] == ("provision",), "provision should follow ack"
     assert "started" in call_log[0][1].lower() or "rebuild" in call_log[0][1].lower()
 
 
-def test_handle_rebuild_success_message(
+async def test_handle_rebuild_success_message(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
 
     from overseer.types import ProvisionResult
@@ -405,17 +443,20 @@ def test_handle_rebuild_success_message(
         )),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="rebuild", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
 
     final = sent[-1]
     assert "complete" in final.lower() or "✅" in final
 
 
-def test_handle_rebuild_failure(
+async def test_handle_rebuild_failure(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
 
     with patch(
@@ -423,7 +464,7 @@ def test_handle_rebuild_failure(
         return_value=Err("rebuild failed", source="provision"),
     ):
         cmd = BotCommand(chat_id=_allowed_chat(example_config), name="rebuild", update_id=1)
-        execute_command(cmd, ctx)
+        await execute_command(cmd, ctx)
 
     assert any("failed" in s.lower() for s in sent)
 
@@ -433,13 +474,16 @@ def test_handle_rebuild_failure(
 # ---------------------------------------------------------------------------
 
 
-def test_execute_unknown_command(
+async def test_execute_unknown_command(
     ctx: CommandContext, monkeypatch: pytest.MonkeyPatch, example_config: Config
 ) -> None:
     sent: list[str] = []
-    monkeypatch.setattr("overseer.bot.commands._send", lambda t, c, text: sent.append(text))
+    monkeypatch.setattr(
+        "overseer.bot.commands._send",
+        AsyncMock(side_effect=lambda t, c, text: sent.append(text)),
+    )
     monkeypatch.setenv(example_config.alerts.telegram.bot_token_env, "TOKEN")
     cmd = BotCommand(chat_id=_allowed_chat(example_config), name="notacommand", update_id=1)
-    execute_command(cmd, ctx)
+    await execute_command(cmd, ctx)
     assert sent
     assert "notacommand" in sent[0] or "unknown" in sent[0].lower()

@@ -21,7 +21,7 @@ def get_action_sequence(tier: AlertTier, response_config: ResponseConfig) -> lis
     return list(tier_config[tier].actions)
 
 
-def execute_actions(
+async def execute_actions(
     actions: list[str],
     server_id: int,
     bl_client: Any,
@@ -46,7 +46,7 @@ def execute_actions(
     results: list[Result[Any]] = []
 
     for action in actions:
-        result = _execute_one(
+        result = await _execute_one(
             action, server_id, bl_client, alerts_config, signals, tier, config=config
         )
         results.append(result)
@@ -58,7 +58,7 @@ def execute_actions(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _execute_one(
+async def _execute_one(
     action: str,
     server_id: int,
     bl_client: Any,
@@ -68,7 +68,7 @@ def _execute_one(
     config: Config | None = None,
 ) -> Result[Any]:
     if action == "alert":
-        return _action_alert(alerts_config, signals, tier)
+        return await _action_alert(alerts_config, signals, tier)
     if action == "power_off":
         return _action_power_off(bl_client, server_id)
     if action == "take_backup":
@@ -81,11 +81,11 @@ def _execute_one(
     return Err(f"Unknown action: {action!r}", source="actions")
 
 
-def _action_alert(alerts_config: Any, signals: list[Signal], tier: AlertTier) -> Result[Any]:
+async def _action_alert(alerts_config: Any, signals: list[Signal], tier: AlertTier) -> Result[Any]:
     try:
         from overseer.alert import dispatch_alert
 
-        results = dispatch_alert(alerts_config, signals, tier)
+        results = await dispatch_alert(alerts_config, signals, tier)
         return Ok(results)
     except ImportError as exc:
         return Err(f"alert dispatch unavailable: {exc}", source="actions")

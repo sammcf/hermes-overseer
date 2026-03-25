@@ -1,0 +1,5 @@
+name: overseer-alerts
+description: Check overseer status on gateway startup and report session metrics on agent end
+events:
+  - gateway:startup
+  - agent:end

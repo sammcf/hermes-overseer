@@ -62,11 +62,11 @@ def test_format_alert_yellow_tier() -> None:
 
 
 @respx.mock
-def test_send_telegram_success() -> None:
+async def test_send_telegram_success() -> None:
     respx.post("https://api.telegram.org/botTOKEN123/sendMessage").mock(
         return_value=httpx.Response(200, json={"ok": True, "result": {"message_id": 42}})
     )
-    result = send_telegram("TOKEN123", "CHAT_ID", "hello")
+    result = await send_telegram("TOKEN123", "CHAT_ID", "hello")
     assert isinstance(result, Ok)
     assert result.value["ok"] is True
 
@@ -77,31 +77,31 @@ def test_send_telegram_success() -> None:
 
 
 @respx.mock
-def test_send_telegram_api_error() -> None:
+async def test_send_telegram_api_error() -> None:
     respx.post("https://api.telegram.org/botBAD/sendMessage").mock(
         return_value=httpx.Response(
             400, json={"ok": False, "description": "Bad Request: chat not found"}
         )
     )
-    result = send_telegram("BAD", "CHAT_ID", "hello")
+    result = await send_telegram("BAD", "CHAT_ID", "hello")
     assert isinstance(result, Err)
     assert "chat not found" in result.error
 
 
 @respx.mock
-def test_send_telegram_timeout() -> None:
+async def test_send_telegram_timeout() -> None:
     respx.post("https://api.telegram.org/botTOKEN/sendMessage").mock(
         side_effect=httpx.TimeoutException("timed out")
     )
-    result = send_telegram("TOKEN", "CHAT_ID", "hello")
+    result = await send_telegram("TOKEN", "CHAT_ID", "hello")
     assert isinstance(result, Err)
     assert "timed out" in result.error.lower()
 
 
 @respx.mock
-def test_send_telegram_http_error() -> None:
+async def test_send_telegram_http_error() -> None:
     respx.post("https://api.telegram.org/botTOKEN/sendMessage").mock(
         side_effect=httpx.ConnectError("connection refused")
     )
-    result = send_telegram("TOKEN", "CHAT_ID", "hello")
+    result = await send_telegram("TOKEN", "CHAT_ID", "hello")
     assert isinstance(result, Err)

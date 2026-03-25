@@ -1,0 +1,10 @@
+name: hermes-overseer-bridge
+version: "0.1.0"
+description: Overseer integration — status checks and anomaly monitoring
+author: sam
+requires_env:
+  - OVERSEER_API_TOKEN
+provides_tools:
+  - overseer_status
+provides_hooks:
+  - post_tool_call

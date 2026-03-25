@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from overseer.config import Config, ResponseConfig, TierActionConfig, load_config
 from overseer.response.actions import execute_actions, get_action_sequence
@@ -75,11 +75,11 @@ def test_get_action_sequence_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_execute_actions_calls_in_order():
+async def test_execute_actions_calls_in_order():
     """Actions must be executed left-to-right; results must be in the same order."""
     call_order: list[str] = []
 
-    def fake_alert(alerts_config, signals, tier):
+    async def fake_alert(alerts_config, signals, tier):
         call_order.append("alert")
         return Ok("sent")
 
@@ -92,7 +92,7 @@ def test_execute_actions_calls_in_order():
         patch("overseer.response.actions._action_alert", side_effect=fake_alert),
         patch("overseer.response.actions._action_power_off", side_effect=fake_power_off),
     ):
-        results = execute_actions(
+        results = await execute_actions(
             ["power_off", "alert"],
             server_id=42,
             bl_client=MagicMock(),
@@ -106,7 +106,7 @@ def test_execute_actions_calls_in_order():
     assert all(isinstance(r, Ok) for r in results)
 
 
-def test_execute_actions_continues_after_failure():
+async def test_execute_actions_continues_after_failure():
     """A failing action must not prevent subsequent actions from running."""
     call_order: list[str] = []
 
@@ -114,7 +114,7 @@ def test_execute_actions_continues_after_failure():
         call_order.append("power_off")
         return Err("BL API down", source="binarylane")
 
-    def fake_alert(alerts_config, signals, tier):
+    async def fake_alert(alerts_config, signals, tier):
         call_order.append("alert")
         return Ok("sent")
 
@@ -122,7 +122,7 @@ def test_execute_actions_continues_after_failure():
         patch("overseer.response.actions._action_power_off", side_effect=fake_power_off),
         patch("overseer.response.actions._action_alert", side_effect=fake_alert),
     ):
-        results = execute_actions(
+        results = await execute_actions(
             ["power_off", "alert"],
             server_id=1,
             bl_client=MagicMock(),
@@ -136,8 +136,8 @@ def test_execute_actions_continues_after_failure():
     assert isinstance(results[1], Ok)
 
 
-def test_execute_actions_revoke_keys_placeholder():
-    results = execute_actions(
+async def test_execute_actions_revoke_keys_placeholder():
+    results = await execute_actions(
         ["revoke_keys"],
         server_id=1,
         bl_client=MagicMock(),
@@ -150,8 +150,8 @@ def test_execute_actions_revoke_keys_placeholder():
     assert "placeholder" in results[0].value.lower()
 
 
-def test_execute_actions_unknown_action_returns_err():
-    results = execute_actions(
+async def test_execute_actions_unknown_action_returns_err():
+    results = await execute_actions(
         ["totally_unknown"],
         server_id=1,
         bl_client=MagicMock(),
@@ -164,8 +164,8 @@ def test_execute_actions_unknown_action_returns_err():
     assert "totally_unknown" in results[0].error
 
 
-def test_execute_actions_empty_list():
-    results = execute_actions(
+async def test_execute_actions_empty_list():
+    results = await execute_actions(
         [],
         server_id=1,
         bl_client=MagicMock(),
@@ -191,7 +191,7 @@ def _load_example_config() -> Config:
         return load_config(EXAMPLE_CONFIG)
 
 
-def test_rebuild_without_config_calls_bare_rebuild():
+async def test_rebuild_without_config_calls_bare_rebuild():
     """config=None preserves the original bare rebuild behaviour."""
     called_with: list[str] = []
 
@@ -200,7 +200,7 @@ def test_rebuild_without_config_calls_bare_rebuild():
         return Ok({"id": 1, "status": "completed", "type": "rebuild"})
 
     with patch("overseer.binarylane.actions.rebuild", fake_rebuild):
-        results = execute_actions(
+        results = await execute_actions(
             ["rebuild"],
             server_id=1,
             bl_client=MagicMock(),
@@ -215,7 +215,7 @@ def test_rebuild_without_config_calls_bare_rebuild():
     assert called_with == ["ubuntu-24.04"]
 
 
-def test_rebuild_with_config_calls_provisioner():
+async def test_rebuild_with_config_calls_provisioner():
     """When config is provided, rebuild dispatches to provision_after_rebuild."""
     provisioner_called = False
 
@@ -230,7 +230,7 @@ def test_rebuild_with_config_calls_provisioner():
         "overseer.provision.provisioner.provision_after_rebuild",
         fake_provision,
     ):
-        results = execute_actions(
+        results = await execute_actions(
             ["rebuild"],
             server_id=config.vps.server_id,
             bl_client=MagicMock(),

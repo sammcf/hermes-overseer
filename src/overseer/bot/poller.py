@@ -9,7 +9,7 @@ from overseer.types import Err, Ok, Result
 _GETUPDATE_TIMEOUT = 10  # seconds; timeout=0 means non-blocking on Telegram's side
 
 
-def fetch_updates(bot_token: str, offset: int) -> Result[list[dict]]:  # type: ignore[type-arg]
+async def fetch_updates(bot_token: str, offset: int) -> Result[list[dict]]:  # type: ignore[type-arg]
     """Call getUpdates with timeout=0 (non-blocking, returns immediately).
 
     offset: pass last_update_id + 1 to acknowledge previously processed updates.
@@ -18,7 +18,8 @@ def fetch_updates(bot_token: str, offset: int) -> Result[list[dict]]:  # type: i
     url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
     params = {"offset": offset, "timeout": 0, "limit": 100}
     try:
-        response = httpx.get(url, params=params, timeout=_GETUPDATE_TIMEOUT)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=_GETUPDATE_TIMEOUT)
         data: dict = response.json()  # type: ignore[type-arg]
         if not data.get("ok"):
             return Err(

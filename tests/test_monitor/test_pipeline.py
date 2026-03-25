@@ -67,6 +67,14 @@ def _patch_all_clean(monkeypatch: pytest.MonkeyPatch) -> None:
         "overseer.monitor.pipeline.check_config_drift",
         lambda *a, **kw: [],
     )
+    monkeypatch.setattr(
+        "overseer.monitor.pipeline.check_session_activity",
+        lambda *a, **kw: [],
+    )
+    monkeypatch.setattr(
+        "overseer.monitor.pipeline.check_token_budget",
+        lambda *a, **kw: [],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -324,24 +332,26 @@ def test_run_poll_cycle_collects_all_signals(
 # ---------------------------------------------------------------------------
 
 
-def test_run_response_cycle_no_signals_returns_empty(
+async def test_run_response_cycle_no_signals_returns_empty(
     config: any,
     bl_client: httpx.Client,
 ) -> None:
     """No signals → no actions taken, empty results."""
-    results = run_response_cycle([], config, bl_client)
+    results = await run_response_cycle([], config, bl_client)
     assert results == []
 
 
-def test_run_response_cycle_yellow_signals_trigger_alert(
+async def test_run_response_cycle_yellow_signals_trigger_alert(
     monkeypatch: pytest.MonkeyPatch,
     config: any,
     bl_client: httpx.Client,
 ) -> None:
     """YELLOW signals → 'alert' action is attempted."""
+    from unittest.mock import AsyncMock
+
     executed: list[str] = []
 
-    def fake_execute_actions(actions, **kwargs):  # type: ignore[override]
+    async def fake_execute_actions(actions, **kwargs):  # type: ignore[override]
         executed.extend(actions)
         return [Ok("done") for _ in actions]
 
@@ -351,6 +361,6 @@ def test_run_response_cycle_yellow_signals_trigger_alert(
     )
 
     signals = [_make_signal("metrics", AlertTier.YELLOW)]
-    run_response_cycle(signals, config, bl_client)
+    await run_response_cycle(signals, config, bl_client)
 
     assert "alert" in executed

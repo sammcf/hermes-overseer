@@ -1,0 +1,8 @@
+# Hermes-overseer bridge plugin configuration
+# Copy to config.yaml and set the values for your deployment.
+
+# Overseer API URL (Tailscale hostname)
+overseer_url: "http://hermes-overseer:8900"
+
+# Tool call warning threshold per session
+tool_call_warn_threshold: 150

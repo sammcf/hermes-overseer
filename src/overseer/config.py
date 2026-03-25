@@ -113,14 +113,34 @@ class AlertsConfig(BaseModel, frozen=True):
 class WatchedFilesConfig(BaseModel, frozen=True):
     orange_on_any_diff: list[str] = [".env", "config.yaml", "google_token.json", "google_client_secret.json"]
     orange_on_suspicious_diff: list[str] = ["SOUL.md", "memories/MEMORY.md", "memories/USER.md"]
-    yellow_on_any_diff: list[str] = ["cron/jobs.json"]
+    yellow_on_any_diff: list[str] = []
     yellow_on_new_file: list[str] = ["skills/"]
+
+
+class SessionThresholds(BaseModel, frozen=True):
+    """Thresholds for hermes session activity monitoring."""
+
+    window_hours: int = 6
+    inactivity_alert_hours: int = 24
+    max_tool_calls_per_session: int = 200
+    max_tokens_per_window: int = 2_000_000
+    max_session_duration_hours: float = 8.0
+
+
+class TokenBudgetConfig(BaseModel, frozen=True):
+    """Rolling-window token budget enforcement."""
+
+    window_hours: int = 6
+    warn_tokens: int = 1_000_000
+    critical_tokens: int = 3_000_000
 
 
 class MonitorConfig(BaseModel, frozen=True):
     watched_files: WatchedFilesConfig = WatchedFilesConfig()
     connection_allowlist: list[str] = []
     sustained_unknown_threshold: int = 3
+    session_thresholds: SessionThresholds = SessionThresholds()
+    token_budget: TokenBudgetConfig = TokenBudgetConfig()
 
 
 class ProviderCostConfig(BaseModel, frozen=True):
@@ -180,6 +200,13 @@ class HermesSecretsConfig(BaseModel, frozen=True):
     }
 
 
+class ApiConfig(BaseModel, frozen=True):
+    enabled: bool = False
+    host: str = "0.0.0.0"
+    port: int = 8900
+    bearer_token_env: str = "OVERSEER_API_TOKEN"
+
+
 class Config(BaseModel, frozen=True):
     """Root configuration. All secrets are referenced by env var name, never stored directly."""
 
@@ -191,6 +218,7 @@ class Config(BaseModel, frozen=True):
     cost: CostConfig = CostConfig()
     response: ResponseConfig = ResponseConfig()
     hermes_secrets: HermesSecretsConfig = HermesSecretsConfig()
+    api: ApiConfig = ApiConfig()
 
     @model_validator(mode="after")
     def validate_env_vars_exist(self) -> Config:
@@ -203,6 +231,8 @@ class Config(BaseModel, frozen=True):
             self.alerts.email.password_env,
             *self.hermes_secrets.env_mapping.values(),
         ]
+        if self.api.enabled:
+            env_refs.append(self.api.bearer_token_env)
         missing = [ref for ref in env_refs if not os.environ.get(ref)]
         if missing:
             import warnings

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import string
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,61 @@ def _wait_for_cloud_init(
         "cloud-init status --wait >/dev/null 2>&1 || true; echo cloud-init-done",
         timeout=int(timeout),
     )
+
+
+def _deploy_plugin_or_hook(
+    config: Config,
+    kind: str,  # "plugins" or "hooks"
+    name: str,
+    local_dir: Path,
+) -> None:
+    """Deploy a plugin or hook directory to the VPS. Best-effort."""
+    if not local_dir.exists():
+        logger.info("No %s/%s found at %s, skipping", kind, name, local_dir)
+        return
+
+    remote_base = f"{config.vps.hermes_home}/{kind}/{name}"
+    # Create remote directory
+    mkdir_result = run_ssh_command(
+        config.vps.tailscale_hostname,
+        config.vps.ssh_user,
+        f"mkdir -p {remote_base}",
+        timeout=10,
+    )
+    if isinstance(mkdir_result, Err):
+        logger.warning("Failed to create %s dir: %s", kind, mkdir_result.error)
+        return
+
+    # Push each file
+    for local_file in sorted(local_dir.iterdir()):
+        if local_file.is_file() and local_file.name != "config.yaml.example":
+            try:
+                content = local_file.read_text()
+            except OSError as exc:
+                logger.warning("Failed to read %s: %s", local_file, exc)
+                continue
+
+            # Template substitution for config.yaml (inject bearer token)
+            if local_file.name == "config.yaml":
+                try:
+                    api_token = resolve_secret(config.api.bearer_token_env)
+                    tmpl = string.Template(content)
+                    content = tmpl.safe_substitute(OVERSEER_API_TOKEN=api_token)
+                except RuntimeError:
+                    logger.warning("API token not set, deploying config.yaml as-is")
+
+            remote_path = f"{remote_base}/{local_file.name}"
+            push_result = push_file_content(
+                config.vps.tailscale_hostname,
+                config.vps.ssh_user,
+                content,
+                remote_path,
+                mode="0644",
+            )
+            if isinstance(push_result, Err):
+                logger.warning("Failed to push %s/%s: %s", name, local_file.name, push_result.error)
+            else:
+                logger.info("Deployed %s/%s/%s", kind, name, local_file.name)
 
 
 def provision_after_rebuild(
@@ -273,6 +329,18 @@ def provision_after_rebuild(
                 logger.info("Applied patch: %s", patch_file.name)
     else:
         logger.debug("No patches_dir at %s, skipping patch step", config.overseer.patches_dir)
+
+    # --- Step 5e: Deploy overseer-bridge plugin (best-effort) ---
+    _deploy_plugin_or_hook(
+        config, "plugins", "hermes-overseer-bridge",
+        Path(__file__).parent.parent.parent.parent / "deploy" / "hermes-plugin",
+    )
+
+    # --- Step 5f: Deploy overseer-alerts hook (best-effort) ---
+    _deploy_plugin_or_hook(
+        config, "hooks", "overseer-alerts",
+        Path(__file__).parent.parent.parent.parent / "deploy" / "hermes-hook",
+    )
 
     # --- Step 6: Build hermes .env ---
     env_content_result = build_hermes_env_content(config.hermes_secrets.env_mapping)
