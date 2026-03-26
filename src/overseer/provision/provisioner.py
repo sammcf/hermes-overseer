@@ -219,6 +219,25 @@ def provision_after_rebuild(
     if isinstance(ci_result, Err):
         return ci_result
 
+    # --- Step 5b2: Install xterm-ghostty terminfo (best-effort) ---
+    # Prevents 'unknown terminal type' errors when SSH-ing from Ghostty.
+    terminfo_file = Path(__file__).parent.parent.parent.parent / "deploy" / "xterm-ghostty.terminfo"
+    if terminfo_file.exists():
+        ti_push = push_file_content(
+            config.vps.tailscale_hostname, config.vps.ssh_user,
+            terminfo_file.read_text(), "/tmp/xterm-ghostty.terminfo", mode="0644",
+        )
+        if isinstance(ti_push, Ok):
+            ti_result = run_ssh_command(
+                config.vps.tailscale_hostname, config.vps.ssh_user,
+                "sudo tic -x /tmp/xterm-ghostty.terminfo && rm -f /tmp/xterm-ghostty.terminfo",
+                timeout=15,
+            )
+            if isinstance(ti_result, Err):
+                logger.warning("terminfo install failed (continuing): %s", ti_result.error)
+            else:
+                logger.info("Installed xterm-ghostty terminfo")
+
     # --- Step 5c: Restore state from latest snapshot (best-effort) ---
     latest_snapshot = find_latest_snapshot(config.backup.dir)
     if latest_snapshot:
