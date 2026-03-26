@@ -42,6 +42,18 @@ class BackupConfig(BaseModel, frozen=True):
         return self
 
 
+class RepoConfig(BaseModel, frozen=True):
+    """A GitHub repository to clone onto the VPS after rebuild.
+
+    Uses the gh CLI (auth restored from snapshot) so private repos work
+    without embedding credentials. dest is relative to the ssh_user home dir.
+    """
+
+    repo: str           # owner/name — e.g. "sam/vault"
+    dest: str           # destination path, e.g. "~/vault" or "vault"
+    branch: str | None = None   # None = default branch
+
+
 class VpsConfig(BaseModel, frozen=True):
     server_id: int
     tailscale_hostname: str
@@ -53,6 +65,7 @@ class VpsConfig(BaseModel, frozen=True):
     tailscale_tailnet: str = "-"
     ssh_public_key_path: str = "~/.ssh/id_ed25519.pub"
     terminfo_sources: list[str] = []
+    repos: list[RepoConfig] = []
 
     @model_validator(mode="after")
     def expand_paths(self) -> VpsConfig:

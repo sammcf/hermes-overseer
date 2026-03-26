@@ -34,6 +34,11 @@ vps:
   tailscale_tailnet: "-"
   ssh_public_key_path: "~/.ssh/id_ed25519.pub"
   terminfo_sources: []           # e.g. ["deploy/xterm-ghostty.terminfo"]
+  repos: []
+  # repos:                       # git repos to clone onto VPS after rebuild
+  #   - repo: "owner/notes"      # GitHub owner/name (private repos use .config/gh auth from snapshot)
+  #     dest: "~/vault"          # destination path on VPS
+  #     branch: "main"           # optional, omit for default branch
 
 binarylane:
   api_token_env: "BL_API_TOKEN"

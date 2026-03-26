@@ -310,6 +310,41 @@ def provision_after_rebuild(
     else:
         logger.info("qmd embed complete")
 
+    # --- Step 5d-repos: Clone configured git repos (best-effort) ---
+    # Runs after snapshot restore so .config/gh auth is available for private repos.
+    # Skips repos whose dest already exists (e.g. restored from snapshot).
+    # On first deploy with no snapshot, gh auth won't exist yet — logs a clear warning.
+    _GH = "/home/linuxbrew/.linuxbrew/bin/gh"
+    for repo_cfg in config.vps.repos:
+        dest = repo_cfg.dest.replace("~", f"/home/{config.vps.ssh_user}")
+        # Skip if dest already exists (restored from snapshot or previous run)
+        check = run_ssh_command(
+            config.vps.tailscale_hostname, config.vps.ssh_user,
+            f"test -d {dest} && echo exists || echo missing",
+            timeout=10,
+        )
+        if isinstance(check, Ok) and "exists" in check.value:
+            logger.info("Repo dest already exists, skipping clone: %s", dest)
+            continue
+
+        branch_flag = f"-- --branch {repo_cfg.branch}" if repo_cfg.branch else ""
+        clone_cmd = (
+            f'eval "$({_BREW} shellenv)" 2>/dev/null'
+            f' && {_GH} repo clone {repo_cfg.repo} {dest} {branch_flag} 2>&1'
+        )
+        clone_result = run_ssh_command(
+            config.vps.tailscale_hostname, config.vps.ssh_user,
+            clone_cmd, timeout=120,
+        )
+        if isinstance(clone_result, Err):
+            logger.warning(
+                "Failed to clone %s → %s (gh auth may not be set up yet — "
+                "SSH in and run `gh auth login`, then re-provision): %s",
+                repo_cfg.repo, dest, clone_result.error,
+            )
+        else:
+            logger.info("Cloned %s → %s", repo_cfg.repo, dest)
+
     # --- Step 5d: Apply local hermes-agent patches (best-effort) ---
     # Patches live in ~/.config/hermes-overseer/patches/*.patch and are applied
     # via git apply in the hermes-agent working tree after each rebuild.
