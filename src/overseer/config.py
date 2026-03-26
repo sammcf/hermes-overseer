@@ -52,6 +52,7 @@ class VpsConfig(BaseModel, frozen=True):
     tailscale_api_key_env: str = "TS_API_KEY"
     tailscale_tailnet: str = "-"
     ssh_public_key_path: str = "~/.ssh/id_ed25519.pub"
+    terminfo_sources: list[str] = []
 
     @model_validator(mode="after")
     def expand_paths(self) -> VpsConfig:

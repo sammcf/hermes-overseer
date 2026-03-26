@@ -219,24 +219,27 @@ def provision_after_rebuild(
     if isinstance(ci_result, Err):
         return ci_result
 
-    # --- Step 5b2: Install xterm-ghostty terminfo (best-effort) ---
-    # Prevents 'unknown terminal type' errors when SSH-ing from Ghostty.
-    terminfo_file = Path(__file__).parent.parent.parent.parent / "deploy" / "xterm-ghostty.terminfo"
-    if terminfo_file.exists():
+    # --- Step 5b2: Install custom terminfo entries (best-effort) ---
+    for ti_source in config.vps.terminfo_sources:
+        ti_path = Path(ti_source).expanduser()
+        if not ti_path.exists():
+            logger.warning("Terminfo source not found, skipping: %s", ti_source)
+            continue
+        remote_tmp = f"/tmp/{ti_path.name}"
         ti_push = push_file_content(
             config.vps.tailscale_hostname, config.vps.ssh_user,
-            terminfo_file.read_text(), "/tmp/xterm-ghostty.terminfo", mode="0644",
+            ti_path.read_text(), remote_tmp, mode="0644",
         )
         if isinstance(ti_push, Ok):
             ti_result = run_ssh_command(
                 config.vps.tailscale_hostname, config.vps.ssh_user,
-                "sudo tic -x /tmp/xterm-ghostty.terminfo && rm -f /tmp/xterm-ghostty.terminfo",
+                f"sudo tic -x {remote_tmp} && rm -f {remote_tmp}",
                 timeout=15,
             )
             if isinstance(ti_result, Err):
-                logger.warning("terminfo install failed (continuing): %s", ti_result.error)
+                logger.warning("terminfo install failed for %s: %s", ti_path.name, ti_result.error)
             else:
-                logger.info("Installed xterm-ghostty terminfo")
+                logger.info("Installed terminfo: %s", ti_path.name)
 
     # --- Step 5c: Restore state from latest snapshot (best-effort) ---
     latest_snapshot = find_latest_snapshot(config.backup.dir)
